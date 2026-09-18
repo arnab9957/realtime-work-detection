@@ -146,6 +146,8 @@ class ValidationAgent:
                     lid_angle >= 18.0
                     or ("container_lid" in objects and objects["container_lid"].bbox is not None)
                     or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.75 and lid_angle >= 14.0)
+                    or ("red_box" in objects and objects["red_box"].bbox is not None)
+                    or ("yellow_box" in objects and objects["yellow_box"].bbox is not None)
                 )
                 if is_opening:
                     self._accumulate_debounce(FSMStep.CONTAINER_OPEN)

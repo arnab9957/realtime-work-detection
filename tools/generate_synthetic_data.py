@@ -183,21 +183,27 @@ def generate_experiment_frame(
     # 3. Red Box
     if red_pos is None:
         # Default docked position inside container
-        rx, ry = int(box_cx - 100), int(box_cy + 15)
+        rx, ry = box_cx - 100, box_cy + 15
     else:
         rx, ry = red_pos
     rw, rh, rd = 110, 80, 50
-    rx1, ry1, rx2, ry2 = draw_perspective_box(img, (rx, ry), (rw, rh, rd), (40, 40, 220), camera_tilt_deg)
+    r_b = random.randint(10, 60)
+    r_g = random.randint(10, 60)
+    r_r = random.randint(180, 255)
+    rx1, ry1, rx2, ry2 = draw_perspective_box(img, (rx, ry), (rw, rh, rd), (r_b, r_g, r_r), camera_tilt_deg)
     labels.append((CLASSES["red_box"], rx1, ry1, rx2, ry2))
 
     # 4. Yellow Box
     if yellow_pos is None:
         # Default docked position inside container
-        yx, yy = int(box_cx + 100), int(box_cy + 15)
+        yx, yy = box_cx + 100, box_cy + 15
     else:
         yx, yy = yellow_pos
     yw, yh, yd = 110, 80, 50
-    yx1, yy1, yx2, yy2 = draw_perspective_box(img, (yx, yy), (yw, yh, yd), (30, 215, 235), camera_tilt_deg)
+    y_b = random.randint(10, 60)
+    y_g = random.randint(180, 230)
+    y_r = random.randint(200, 255)
+    yx1, yy1, yx2, yy2 = draw_perspective_box(img, (yx, yy), (yw, yh, yd), (y_b, y_g, y_r), camera_tilt_deg)
     labels.append((CLASSES["yellow_box"], yx1, yy1, yx2, yy2))
 
     # 5. Astronaut Arm / Hand
@@ -297,7 +303,7 @@ def generate_experiment_video(output_path="experiments/sample_experiment_simulat
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     width, height = 1280, 720
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # type: ignore
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
     total_duration_sec = 24 if not anomaly else 18
@@ -305,8 +311,8 @@ def generate_experiment_video(output_path="experiments/sample_experiment_simulat
     print(f"[Video Generator] Rendering {total_frames} frames ({total_duration_sec}s) to {output_path}...")
 
     box_cx, box_cy = int(width * 0.5), int(height * 0.62)
-    red_docked = (int(box_cx - 100), int(box_cy + 15))
-    yellow_docked = (int(box_cx + 100), int(box_cy + 15))
+    red_docked = (box_cx - 100, box_cy + 15)
+    yellow_docked = (box_cx + 100, box_cy + 15)
     red_target = (320, 260)
     yellow_target = (960, 260)
 

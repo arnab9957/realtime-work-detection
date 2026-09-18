@@ -60,6 +60,9 @@ def run_orchestrator(
     print("   ISRO SIH Problem Statement #26174")
     print("=" * 70)
 
+    if config_path is None:
+        config_path = "configs/red_yellow_fsm.json"
+
     # Detect if source or protocol is the Red-Yellow experiment
     is_red_yellow = (
         "red_yellow" in str(source).lower()
@@ -67,15 +70,11 @@ def run_orchestrator(
     )
 
     if is_red_yellow:
-        if config_path is None or "box_return" in str(config_path):
-            config_path = "configs/red_yellow_fsm.json"
         if realtime_feed_dir == "realtime_feed":
             realtime_feed_dir = "realtime_feed_red_yellow"
         if output_csv_dir is None:
             output_csv_dir = "experiments_red_yellow"
     else:
-        if config_path is None:
-            config_path = "configs/box_return_fsm.json"
         if output_csv_dir is None:
             output_csv_dir = "experiments"
 

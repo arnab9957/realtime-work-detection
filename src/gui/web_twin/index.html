@@ -8,230 +8,176 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-dark: #080b11;
-      --panel-bg: rgba(15, 22, 36, 0.92);
-      --panel-border: #1e293b;
-      --accent-cyan: #00f0ff;
-      --accent-blue: #0070f3;
-      --accent-green: #00e676;
-      --accent-orange: #ff9100;
-      --accent-red: #ff1744;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
+      --bg-dark: #071013;
+      --panel-bg: #0b171c;
+      --panel-border: #142c33;
+      --accent-cyan: #42f5e0;
+      --accent-cyan-glow: rgba(66, 245, 224, 0.3);
+      --accent-cyan-bg: rgba(66, 245, 224, 0.1);
+      --text-main: #ffffff;
+      --text-muted: #8ca5af;
+      --text-dark: #000000;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: var(--bg-dark);
       color: var(--text-main);
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Inter', sans-serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
+      padding: 40px;
+      align-items: center;
+    }
+
+    /* Main Container acting as the application window */
+    .app-container {
+      width: 100%;
+      max-width: 1400px;
+      background: var(--panel-bg);
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--panel-border);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }
 
     /* Top Navigation Bar */
     header {
-      background: rgba(11, 17, 28, 0.95);
-      border-bottom: 1px solid var(--panel-border);
-      padding: 12px 24px;
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      backdrop-filter: blur(12px);
-      z-index: 100;
+      align-items: flex-end;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--panel-border);
     }
 
     .brand {
       display: flex;
-      align-items: baseline;
-      gap: 12px;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .brand .subtitle {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
     .brand h1 {
       font-family: 'Orbitron', sans-serif;
-      font-size: 1.15rem;
-      letter-spacing: 1.2px;
+      font-size: 1.8rem;
       color: #fff;
-      font-weight: 800;
-    }
-    .brand .subtitle {
-      font-size: 0.72rem;
-      color: var(--accent-cyan);
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
     }
 
-    /* Central Controls: Feed Selector & Reset */
+    /* Header Controls */
     .header-controls {
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
-    .pill-group {
-      display: flex;
-      background: rgba(30, 41, 59, 0.5);
-      padding: 4px;
-      border-radius: 8px;
-      border: 1px solid var(--panel-border);
-      gap: 4px;
-    }
     .pill-btn {
       background: transparent;
-      border: none;
+      border: 1px solid var(--text-muted);
       color: var(--text-muted);
-      padding: 6px 14px;
-      border-radius: 6px;
+      padding: 8px 18px;
+      border-radius: 20px;
       font-family: 'Inter', sans-serif;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .pill-btn:hover {
       color: #fff;
-      background: rgba(255, 255, 255, 0.05);
+      border-color: #fff;
     }
     .pill-btn.active {
-      background: var(--accent-blue);
-      color: #fff;
-      box-shadow: 0 0 12px rgba(0, 112, 243, 0.4);
+      background: var(--accent-cyan);
+      color: var(--text-dark);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 15px var(--accent-cyan-glow);
     }
 
     .reset-btn {
-      background: rgba(255, 255, 255, 0.08);
+      background: transparent;
       border: 1px solid var(--panel-border);
-      color: #fff;
-      padding: 7px 16px;
-      border-radius: 8px;
+      color: var(--text-muted);
+      padding: 8px 18px;
+      border-radius: 20px;
       font-family: 'Inter', sans-serif;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      margin-left: 10px;
     }
     .reset-btn:hover {
-      background: rgba(0, 240, 255, 0.15);
+      color: var(--accent-cyan);
       border-color: var(--accent-cyan);
-      color: var(--accent-cyan);
-      box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
-    }
-
-    /* Header Right: Status Indicators */
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      background: rgba(30, 41, 59, 0.4);
-      padding: 5px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--panel-border);
-    }
-    .status-badge strong {
-      color: var(--accent-cyan);
-    }
-    .live-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-green);
-      box-shadow: 0 0 8px var(--accent-green);
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(1.1); }
     }
 
     /* Main Content Layout */
     main {
-      flex: 1;
-      padding: 20px 24px;
       display: grid;
-      grid-template-columns: 2.2fr 1fr;
-      gap: 20px;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
       align-items: start;
     }
 
-    /* Video Hero Section */
-    .video-section {
+    /* Left Column: Video & Actions */
+    .left-col {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
     }
 
     .video-card {
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
+      background: #000;
+      border: 2px solid var(--accent-cyan);
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 0 20px var(--accent-cyan-glow);
+      display: flex;
+      flex-direction: column;
     }
 
     .video-header {
       padding: 12px 18px;
-      background: rgba(20, 29, 46, 0.7);
+      background: rgba(0, 0, 0, 0.5);
       border-bottom: 1px solid var(--panel-border);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      position: absolute;
+      width: 100%;
+      z-index: 10;
     }
     .video-title {
-      font-family: 'Orbitron', sans-serif;
+      font-family: 'Inter', sans-serif;
       font-size: 0.85rem;
-      font-weight: 700;
+      font-weight: 600;
       color: #fff;
-      letter-spacing: 0.8px;
-    }
-
-    .verdict-pill {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.72rem;
-      font-weight: 800;
-      padding: 5px 12px;
-      border-radius: 6px;
       letter-spacing: 0.5px;
-      transition: all 0.25s ease;
     }
-    .verdict-pill.nominal {
-      background: rgba(0, 230, 118, 0.15);
-      border: 1px solid var(--accent-green);
-      color: var(--accent-green);
-      box-shadow: 0 0 10px rgba(0, 230, 118, 0.25);
-    }
-    .verdict-pill.error {
-      background: rgba(255, 23, 68, 0.2);
-      border: 1px solid var(--accent-red);
-      color: var(--accent-red);
-      box-shadow: 0 0 14px rgba(255, 23, 68, 0.5);
-      animation: alertPulse 1.0s infinite;
-    }
-    @keyframes alertPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.8; transform: scale(1.02); }
+    .header-dots {
+      color: var(--text-muted);
+      font-size: 1.2rem;
+      line-height: 1;
     }
 
     .video-frame {
       position: relative;
-      background: #000;
       width: 100%;
-      height: 520px;
+      height: 480px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -240,210 +186,176 @@
     .video-frame img {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
     }
 
-    /* Action & Guidance Strip */
+    /* Action Panels */
     .action-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      gap: 20px;
     }
     .action-card {
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(20, 44, 51, 0.6) 0%, rgba(11, 23, 28, 0.6) 100%);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 12px;
       padding: 16px 20px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      transition: all 0.25s ease;
-    }
-    .action-card.doing {
-      border-color: rgba(0, 240, 255, 0.3);
-      background: rgba(0, 240, 255, 0.05);
-    }
-    .action-card.todo {
-      border-color: rgba(0, 230, 118, 0.3);
-      background: rgba(0, 230, 118, 0.05);
-    }
-    .action-card.anomaly {
-      border-color: var(--accent-red) !important;
-      background: rgba(255, 23, 68, 0.12) !important;
-      box-shadow: 0 0 15px rgba(255, 23, 68, 0.25);
+      gap: 12px;
+      box-shadow: 0 0 15px var(--accent-cyan-glow);
     }
 
-    .action-tag {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.68rem;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-    }
-    .action-card.doing .action-tag { color: var(--accent-cyan); }
-    .action-card.todo .action-tag { color: var(--accent-green); }
-    .action-card.anomaly .action-tag { color: var(--accent-red); }
-
-    .action-val {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: #fff;
-      line-height: 1.4;
-      min-height: 42px;
-      display: flex;
-      align-items: center;
-    }
-
-    /* Sidebar: Step Checklist */
-    .sidebar-section {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .checklist-card {
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-    .checklist-header {
-      padding: 14px 18px;
-      background: rgba(20, 29, 46, 0.7);
-      border-bottom: 1px solid var(--panel-border);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.8px;
+    .action-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 8px;
     }
-    .complete-badge {
-      background: var(--accent-green);
-      color: #000;
-      font-weight: 800;
-      font-size: 0.70rem;
-      padding: 3px 8px;
-      border-radius: 4px;
+    .action-tag {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+    
+    .action-val {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      min-height: 40px;
+    }
+
+    /* Right Sidebar: Checklist */
+    .checklist-card {
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .checklist-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--panel-border);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fff;
       letter-spacing: 0.5px;
     }
 
     .checklist-body {
-      padding: 16px;
+      padding: 24px 20px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 0;
+      position: relative;
+    }
+
+    /* Vertical line connecting steps */
+    .checklist-body::before {
+      content: '';
+      position: absolute;
+      left: 31px;
+      top: 36px;
+      bottom: 40px;
+      width: 2px;
+      background: var(--panel-border);
+      z-index: 1;
     }
 
     .step-item {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 12px 14px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid transparent;
-      transition: all 0.25s ease;
+      gap: 16px;
+      padding: 12px 0;
+      position: relative;
+      z-index: 2;
     }
-    .step-item.active {
-      background: rgba(0, 240, 255, 0.08);
-      border-color: var(--accent-cyan);
-      box-shadow: 0 0 14px rgba(0, 240, 255, 0.18);
-    }
-    .step-item.completed {
-      background: rgba(0, 230, 118, 0.06);
-      border-color: rgba(0, 230, 118, 0.3);
-    }
-
+    
     .step-icon {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 2px solid var(--text-muted);
+      background: var(--panel-bg);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: 'Orbitron', sans-serif;
-      font-weight: 700;
-      font-size: 0.78rem;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-muted);
       flex-shrink: 0;
+      transition: all 0.2s ease;
     }
+    .step-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: var(--panel-bg);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+    }
+
+    /* Active Step */
     .step-item.active .step-icon {
-      background: var(--accent-cyan);
-      color: #000;
-      box-shadow: 0 0 8px var(--accent-cyan);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan-glow);
     }
+    
+    /* Completed Step */
     .step-item.completed .step-icon {
-      background: var(--accent-green);
-      color: #000;
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+    }
+    .step-item.completed .step-icon svg {
+      opacity: 1;
     }
 
-    .step-text h4 {
-      font-size: 0.88rem;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 2px;
-    }
-    .step-text p {
-      font-size: 0.76rem;
+    .step-text {
+      font-size: 0.85rem;
+      font-weight: 500;
       color: var(--text-muted);
-      line-height: 1.3;
+      transition: all 0.2s ease;
+    }
+    .step-item.active .step-text,
+    .step-item.completed .step-text {
+      color: #fff;
     }
 
-    @media (max-width: 1080px) {
-      main {
-        grid-template-columns: 1fr;
-      }
-      .video-frame {
-        height: 420px;
-      }
-    }
   </style>
 </head>
 <body>
 
+<div class="app-container">
   <!-- Clean Top Bar -->
   <header>
     <div class="brand">
-      <h1>BHARATIYA ANTARIKSH STATION</h1>
-      <span class="subtitle">AI Sequence Validation</span>
+      <span class="subtitle">BHARATIYA ANTARIKSH STATION</span>
+      <h1>AI SEQUENCE VALIDATION</h1>
     </div>
 
     <!-- Central Controls: Primary Experiments & Reset -->
     <div class="header-controls">
-      <div class="pill-group">
-        <button class="pill-btn active" id="btn-ry" onclick="selectFeed('red_yellow')">🔴🟡 Red-Yellow Experiment</button>
-        <button class="pill-btn" id="btn-cam" onclick="selectFeed('cam')">📷 Live Webcam</button>
-        <button class="pill-btn" id="btn-box" onclick="selectFeed('box_return')">📦 Box Return</button>
-      </div>
-
-      <button class="reset-btn" id="btn-restart" onclick="restartTestSequence()">🔄 Reset Test</button>
-    </div>
-
-    <!-- Status -->
-    <div class="header-right">
-      <div class="status-badge">
-        <span class="live-dot"></span>
-        <span id="t-src">RED-YELLOW</span>
-      </div>
-      <div class="status-badge">
-        <strong id="t-fps">30.0</strong>&nbsp;FPS
-      </div>
+      <button class="pill-btn active" id="btn-ry" onclick="selectFeed('red_yellow')">RED-YELLOW EXPERIMENT</button>
+      <button class="pill-btn" id="btn-cam" onclick="selectFeed('cam')">LIVE WEBCAM</button>
+      <button class="pill-btn" id="btn-box" onclick="selectFeed('box_return')">BOX RETURN</button>
+      
+      <button class="reset-btn" id="btn-restart" onclick="restartTestSequence()">RESET ↺</button>
     </div>
   </header>
 
   <!-- Main Hero Grid -->
   <main>
     <!-- Left Column: Video Hero & Action Guidance -->
-    <section class="video-section">
+    <div class="left-col">
       <div class="video-card">
         <div class="video-header">
           <div class="video-title" id="feed-title-text">ISRO RED-YELLOW EXPERIMENT FEED</div>
-          <div id="step-verdict-badge" class="verdict-pill nominal">✓ STEP: CORRECT (NOMINAL)</div>
+          <div class="header-dots">...</div>
         </div>
-
         <div class="video-frame" id="stream-box">
           <img id="live-stream" src="/stream" alt="Real-Time Detection Stream">
         </div>
@@ -451,43 +363,39 @@
 
       <!-- Action & Guidance Strip -->
       <div class="action-grid">
-        <div class="action-card doing" id="card-doing">
-          <div class="action-tag">CURRENT DETECTED ACTION</div>
+        <div class="action-card">
+          <div class="action-header">
+            <div class="action-tag">CURRENT DETECTED ACTION</div>
+            <div class="header-dots">...</div>
+          </div>
           <div class="action-val" id="action-doing">OBSERVING WORKSPACE (IDLE)</div>
         </div>
-        <div class="action-card todo" id="card-todo">
-          <div class="action-tag" id="tag-todo">NEXT REQUIRED ACTION</div>
+        
+        <div class="action-card">
+          <div class="action-header">
+            <div class="action-tag">NEXT REQUIRED ACTION</div>
+            <div class="header-dots">...</div>
+          </div>
           <div class="action-val" id="action-todo">System ready. Open the primary container box.</div>
         </div>
       </div>
-    </section>
+    </div>
 
     <!-- Right Column: Step Checklist -->
-    <aside class="sidebar-section">
-      <div class="checklist-card">
-        <div class="checklist-header">
-          <span id="checklist-protocol-title">PROCEDURAL STEP CHECKLIST</span>
-          <span id="fsm-status-badge" class="complete-badge" style="display: none;">✓ COMPLETE</span>
-        </div>
-        <div class="checklist-body" id="step-checklist">
-          <!-- Populated by JavaScript based on active protocol -->
-        </div>
+    <div class="checklist-card">
+      <div class="checklist-header">PROCEDURAL STEP CHECKLIST</div>
+      <div class="checklist-body" id="step-checklist">
+        <!-- Populated by JavaScript -->
       </div>
-    </aside>
+    </div>
   </main>
+</div>
 
   <script>
     const streamImg = document.getElementById('live-stream');
-    const tFps = document.getElementById('t-fps');
-    const tSrc = document.getElementById('t-src');
     const feedTitle = document.getElementById('feed-title-text');
-    const verdictBadge = document.getElementById('step-verdict-badge');
     const elDoing = document.getElementById('action-doing');
     const elTodo = document.getElementById('action-todo');
-    const cardTodo = document.getElementById('card-todo');
-    const tagTodo = document.getElementById('tag-todo');
-    const statusBadge = document.getElementById('fsm-status-badge');
-    const checklistTitle = document.getElementById('checklist-protocol-title');
     const checklistBody = document.getElementById('step-checklist');
 
     let fallbackTimer = null;
@@ -497,33 +405,33 @@
       "BAS-EXP-26174": {
         name: "ISRO RED-YELLOW PROCEDURE (PS #26174)",
         steps: [
-          { id: 0, title: "Step 0: Standby / Box Closed", desc: "System ready. Primary container box closed" },
-          { id: 1, title: "Step 1: Open Container Box", desc: "Lift lid to open container" },
-          { id: 2, title: "Step 2: Extract Red Box First", desc: "Extract Red box payload into work area" },
-          { id: 3, title: "Step 3: Extract Yellow Box Second", desc: "Extract Yellow box payload into work area" },
-          { id: 4, title: "Step 4: Return Yellow & Red Boxes", desc: "Yellow and red boxes returned into container" },
-          { id: 5, title: "Step 5: Close Box & Complete", desc: "Container box closed, procedure verified complete" }
+          { id: 0, title: "Standby / Box Closed" },
+          { id: 1, title: "Open Container Box" },
+          { id: 2, title: "Extract Red Box First" },
+          { id: 3, title: "Extract Yellow Box Second" },
+          { id: 4, title: "Return Yellow & Red Boxes" },
+          { id: 5, title: "Close Box & Complete" }
         ]
       },
       "BAS-EXP-RED-YELLOW": {
         name: "ISRO RED-YELLOW PROCEDURE (PS #26174)",
         steps: [
-          { id: 0, title: "Step 0: Standby / Box Closed", desc: "System ready. Primary container box closed" },
-          { id: 1, title: "Step 1: Open Container Box", desc: "Lift lid to open container" },
-          { id: 2, title: "Step 2: Extract Red Box First", desc: "Extract Red box payload into work area" },
-          { id: 3, title: "Step 3: Extract Yellow Box Second", desc: "Extract Yellow box payload into work area" },
-          { id: 4, title: "Step 4: Return Yellow & Red Boxes", desc: "Yellow and red boxes returned into container" },
-          { id: 5, title: "Step 5: Close Box & Complete", desc: "Container box closed, procedure verified complete" }
+          { id: 0, title: "Standby / Box Closed" },
+          { id: 1, title: "Open Container Box" },
+          { id: 2, title: "Extract Red Box First" },
+          { id: 3, title: "Extract Yellow Box Second" },
+          { id: 4, title: "Return Yellow & Red Boxes" },
+          { id: 5, title: "Close Box & Complete" }
         ]
       },
       "BAS-EXP-BOX-RETURN": {
         name: "BOX RETURN PROCEDURE",
         steps: [
-          { id: 0, title: "Step 0: Initialize Workspace", desc: "System ready. Await box opening" },
-          { id: 1, title: "Step 1: Open Box", desc: "Lift and fold open box flaps" },
-          { id: 2, title: "Step 2: Take Out Object", desc: "Grasp and extract object from box" },
-          { id: 3, title: "Step 3: Return Object", desc: "Place object back into container" },
-          { id: 4, title: "Step 4: Close Box & Complete", desc: "Close box flaps to finish procedure" }
+          { id: 0, title: "Initialize Workspace" },
+          { id: 1, title: "Open Box" },
+          { id: 2, title: "Take Out Object" },
+          { id: 3, title: "Return Object" },
+          { id: 4, title: "Close Box & Complete" }
         ]
       }
     };
@@ -532,16 +440,14 @@
       if (!PROTOCOLS[expId]) expId = "BAS-EXP-26174";
       activeExperimentId = expId;
       const proto = PROTOCOLS[expId];
-      if (checklistTitle) checklistTitle.textContent = proto.name;
       if (!checklistBody) return;
 
       checklistBody.innerHTML = proto.steps.map(s => `
         <div class="step-item ${s.id === 0 ? 'active' : ''}" id="step-${s.id}">
-          <div class="step-icon">${s.id}</div>
-          <div class="step-text">
-            <h4>${s.title}</h4>
-            <p>${s.desc}</p>
+          <div class="step-icon">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
           </div>
+          <div class="step-text">${s.title}</div>
         </div>
       `).join('');
     }
@@ -578,30 +484,20 @@
 
     // Reset Test Sequence
     async function restartTestSequence() {
-      const btn = document.getElementById('btn-restart');
-      if (btn) btn.textContent = '⏳ Resetting...';
       try {
         await fetch('/reset?t=' + Date.now());
-        if (statusBadge) statusBadge.style.display = 'none';
         const maxSteps = (PROTOCOLS[activeExperimentId] && PROTOCOLS[activeExperimentId].steps) ? PROTOCOLS[activeExperimentId].steps.length - 1 : 5;
         for (let i = 0; i <= maxSteps; i++) {
           const item = document.getElementById(`step-${i}`);
           if (!item) continue;
-          const icon = item.querySelector('.step-icon');
           if (i === 0) {
             item.className = 'step-item active';
-            if (icon) icon.textContent = '0';
           } else {
             item.className = 'step-item';
-            if (icon) icon.textContent = i;
           }
         }
       } catch (err) {
         console.error("Reset error:", err);
-      } finally {
-        setTimeout(() => {
-          if (btn) btn.textContent = '🔄 Reset Test';
-        }, 800);
       }
     }
 
@@ -634,19 +530,10 @@
         const data = await resp.json();
         if (!data || data.step === undefined) return;
 
-        // FPS
-        if (tFps && data.fps !== undefined) {
-          tFps.textContent = data.fps.toFixed(1);
-        }
-
         // Source & Title
         if (data.source_type) {
           const isCam = data.source_type === "LIVE_WEBCAM";
           const isRY = data.source_type === "RED_YELLOW" || String(data.source_type).includes("red_yellow");
-          if (tSrc) {
-            tSrc.textContent = isCam ? "LIVE WEBCAM" : (isRY ? "RED-YELLOW" : "BOX RETURN");
-            tSrc.style.color = isCam ? "var(--accent-green)" : (isRY ? "var(--accent-cyan)" : "var(--accent-orange)");
-          }
           if (feedTitle) {
             feedTitle.textContent = isCam ? "LIVE CAMERA FEED" : (isRY ? "ISRO RED-YELLOW EXPERIMENT FEED" : "RECORDED DEMO FEED");
           }
@@ -658,19 +545,6 @@
         }
 
         const maxSteps = (PROTOCOLS[activeExperimentId] && PROTOCOLS[activeExperimentId].steps) ? PROTOCOLS[activeExperimentId].steps.length - 1 : 5;
-
-        // Step Correctness Verdict Badge
-        const isNominal = (data.is_step_correct !== false) && (!data.anomaly || data.anomaly === "NONE");
-        if (verdictBadge) {
-          if (isNominal) {
-            verdictBadge.className = 'verdict-pill nominal';
-            verdictBadge.textContent = '✓ STEP: CORRECT (NOMINAL)';
-          } else {
-            verdictBadge.className = 'verdict-pill error';
-            const aName = data.anomaly && data.anomaly !== "NONE" ? data.anomaly : "PROCEDURAL ERROR";
-            verdictBadge.textContent = `⚠ STEP ERROR: [${aName}]`;
-          }
-        }
 
         // What I Am Doing & Guidance
         const isComplete = (data.step >= maxSteps || data.step_name === "COMPLETE" || data.step_name === "BOX_CLOSED" || data.step_name === "DUAL_COMPLETE");
@@ -686,43 +560,24 @@
         if (elTodo) {
           if (isComplete) {
             elTodo.textContent = "All experiment steps verified with 100% sequence compliance.";
+          } else if (data.anomaly && data.anomaly !== "NONE") {
+            elTodo.textContent = `ALERT: ${data.anomaly}`;
           } else if (data.what_i_have_to_do) {
             elTodo.textContent = data.what_i_have_to_do;
           }
         }
 
-        if (cardTodo && tagTodo) {
-          if (isComplete) {
-            cardTodo.className = 'action-card todo';
-            tagTodo.textContent = "STATUS: VERIFIED COMPLETE";
-          } else if (data.anomaly && data.anomaly !== "NONE") {
-            cardTodo.className = 'action-card anomaly';
-            tagTodo.textContent = `ALERT: ${data.anomaly}`;
-          } else {
-            cardTodo.className = 'action-card todo';
-            tagTodo.textContent = "NEXT REQUIRED ACTION";
-          }
-        }
-
         // Checklist Progress
-        if (statusBadge) {
-          statusBadge.style.display = isComplete ? 'inline-block' : 'none';
-        }
-
         for (let i = 0; i <= maxSteps; i++) {
           const item = document.getElementById(`step-${i}`);
           if (!item) continue;
-          const icon = item.querySelector('.step-icon');
 
           if (isComplete || i < data.step) {
             item.className = 'step-item completed';
-            if (icon) icon.textContent = '✓';
           } else if (i === data.step) {
             item.className = 'step-item active';
-            if (icon) icon.textContent = i;
           } else {
             item.className = 'step-item';
-            if (icon) icon.textContent = i;
           }
         }
 
