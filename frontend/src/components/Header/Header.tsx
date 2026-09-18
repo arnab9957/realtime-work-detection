@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Activity, Cpu, Gauge, MemoryStick, MonitorPlay,
-  ChevronDown, RotateCcw, Camera, Video, FlaskConical,
+  ChevronDown, RotateCcw, Video, FlaskConical,
   Radio,
 } from 'lucide-react';
 import { getSimulatedSystemMetrics } from '../../mock/fallbackData';
@@ -66,24 +66,24 @@ export function Header({ telemetry, connected }: HeaderProps) {
         </div>
 
         <div className="header-meta">
-          <MetricChip icon={<FlaskConical size={11} strokeWidth={1.8} />} label="EXP" value={telemetry.experiment_id || '—'} />
-          <MetricChip icon={<MonitorPlay size={11} strokeWidth={1.8} />} label="SRC" value={sourceLabel} />
+          <MetricChip icon={<FlaskConical size={11} strokeWidth={1.8} />} label="EXP" value={telemetry.experiment_id || '—'} variant="exp" />
+          <MetricChip icon={<MonitorPlay size={11} strokeWidth={1.8} />} label="SRC" value={sourceLabel} variant="src" />
         </div>
       </div>
 
       {/* ── Center: hardware readouts ─────────────────── */}
       <div className="header-metrics">
-        <MetricReadout icon={<Cpu size={12} strokeWidth={1.5} />} label="CPU" value={`${Math.round(sysMetrics.cpu)}%`} note="est." />
+        <MetricReadout icon={<Cpu size={12} strokeWidth={1.8} />} label="CPU" value={`${Math.round(sysMetrics.cpu)}%`} note="est." variant="cpu" />
         <div className="metric-sep" />
-        <MetricReadout icon={<Activity size={12} strokeWidth={1.5} />} label="GPU" value={`${Math.round(sysMetrics.gpu)}%`} note="est." />
+        <MetricReadout icon={<Activity size={12} strokeWidth={1.8} />} label="GPU" value={`${Math.round(sysMetrics.gpu)}%`} note="est." variant="gpu" />
         <div className="metric-sep" />
-        <MetricReadout icon={<MemoryStick size={12} strokeWidth={1.5} />} label="RAM" value={`${Math.round(sysMetrics.ram)}%`} note="est." />
+        <MetricReadout icon={<MemoryStick size={12} strokeWidth={1.8} />} label="RAM" value={`${Math.round(sysMetrics.ram)}%`} note="est." variant="ram" />
         <div className="metric-sep" />
-        <MetricReadout icon={<Gauge size={12} strokeWidth={1.5} />} label="VRAM" value={`${Math.round(sysMetrics.vram)}%`} note="est." />
+        <MetricReadout icon={<Gauge size={12} strokeWidth={1.8} />} label="VRAM" value={`${Math.round(sysMetrics.vram)}%`} note="est." variant="vram" />
         <div className="metric-sep" />
-        <MetricReadout icon={<Video size={12} strokeWidth={1.5} />} label="FPS" value={telemetry.fps > 0 ? telemetry.fps.toFixed(1) : '—'} />
+        <MetricReadout icon={<Video size={12} strokeWidth={1.8} />} label="FPS" value={telemetry.fps > 0 ? telemetry.fps.toFixed(1) : '—'} variant="fps" />
         <div className="metric-sep" />
-        <MetricReadout icon={<Radio size={12} strokeWidth={1.5} />} label="LAT" value={telemetry.latency_ms > 0 ? `${telemetry.latency_ms.toFixed(0)} ms` : '—'} />
+        <MetricReadout icon={<Radio size={12} strokeWidth={1.8} />} label="LAT" value={telemetry.latency_ms > 0 ? `${telemetry.latency_ms.toFixed(0)} ms` : '—'} variant="lat" />
       </div>
 
       {/* ── Right: status + controls ─────────────────── */}
@@ -98,25 +98,20 @@ export function Header({ telemetry, connected }: HeaderProps) {
             className="ctrl-btn"
             onClick={() => setControlsOpen(o => !o)}
             aria-expanded={controlsOpen}
+            aria-label="System controls"
           >
-            <Camera size={13} strokeWidth={1.8} />
+            <RotateCcw size={12} strokeWidth={1.8} />
             <span>Controls</span>
-            <ChevronDown size={12} strokeWidth={2} style={{ opacity: 0.6, transition: 'transform 0.15s', transform: controlsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+            <ChevronDown size={11} strokeWidth={1.8} style={{ opacity: 0.6 }} />
           </button>
 
           {controlsOpen && (
-            <div className="ctrl-dropdown">
+            <div className="ctrl-dropdown" role="menu">
               <p className="ctrl-group-label">System</p>
-              <button className="ctrl-item" onClick={handleReset}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <RotateCcw size={11} strokeWidth={2} style={{ color: 'var(--text-muted)' }} />
-                  Reset FSM
-                </span>
-              </button>
+              <button className="ctrl-item" onClick={handleReset}>Reset State</button>
 
               <p className="ctrl-group-label">Video Source</p>
-              <button className="ctrl-item" onClick={() => handleSource('cam')}>Live Camera</button>
-              <button className="ctrl-item" onClick={() => handleSource('red_yellow.mp4')}>Red-Yellow Clip</button>
+              <button className="ctrl-item" onClick={() => handleSource('0')}>Webcam 0</button>
               <button className="ctrl-item" onClick={() => handleSource('clip1.mp4')}>Demo Clip</button>
 
               <p className="ctrl-group-label">Experiment</p>
@@ -130,16 +125,17 @@ export function Header({ telemetry, connected }: HeaderProps) {
   );
 }
 
-function MetricReadout({ icon, label, value, note }: {
+function MetricReadout({ icon, label, value, note, variant }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   note?: string;
+  variant?: 'cpu' | 'gpu' | 'ram' | 'vram' | 'fps' | 'lat';
 }) {
   return (
-    <div className="metric-item">
+    <div className={`metric-item ${variant ? `metric-${variant}` : ''}`}>
       <span className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-        <span style={{ color: 'var(--text-muted)', display: 'flex' }}>{icon}</span>
+        <span className="metric-icon" style={{ display: 'flex' }}>{icon}</span>
         {label}
       </span>
       <span className="metric-value">{value}</span>
@@ -148,10 +144,15 @@ function MetricReadout({ icon, label, value, note }: {
   );
 }
 
-function MetricChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function MetricChip({ icon, label, value, variant }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  variant?: 'exp' | 'src';
+}) {
   return (
-    <div className="metric-chip">
-      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{icon}</span>
+    <div className={`metric-chip ${variant ? `chip-${variant}` : ''}`}>
+      <span className="chip-icon" style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>
       <span className="metric-chip-label">{label}</span>
       <span className="metric-chip-value">{value}</span>
     </div>

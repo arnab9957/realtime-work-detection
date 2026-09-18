@@ -35,7 +35,6 @@ from src.agents.fusion_agent import FusionAgent
 from src.agents.har_agent import HARAgent
 from src.agents.digital_twin_agent import DigitalTwinAgent
 from src.agents.validation_agent import ValidationAgent
-from src.agents.dt_simulation_adapter import DTSimulationAdapter
 from src.agents.reasoning_agent import ReasoningAgent
 from src.agents.monitoring_agent import MonitoringAgent
 from src.llm.realtime_llm_verifier import RealtimeLLMVerifier

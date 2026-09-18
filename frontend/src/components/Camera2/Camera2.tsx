@@ -3,9 +3,10 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid, Text, Sphere, Box, Cylinder } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsType } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as THREE from 'three';
-import { Package, LayoutGrid, Eye, RefreshCw } from 'lucide-react';
+import { Package, LayoutGrid, Eye, RefreshCw, Video } from 'lucide-react';
 import type { DigitalTwinData } from '../../types/api';
 import { useDigitalTwin } from '../../hooks/useDigitalTwin';
+import { API } from '../../services/api';
 
 
 // ── Lerped mesh wrapper ───────────────────────────────────────────────────────
@@ -262,50 +263,133 @@ function CameraResetter({ trigger }: { trigger: number }) {
 // ── Camera2 panel ─────────────────────────────────────────────────────────────
 export function Camera2() {
   const { data } = useDigitalTwin();
+  const [viewMode, setViewMode] = useState<'stream' | '3d'>('stream');
   const [showGrid,   setShowGrid]   = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [showJoints, setShowJoints] = useState(true);
   const [resetTrigger, setResetTrigger] = useState(0);
 
+  const twinImgRef = useRef<HTMLImageElement>(null);
+  const fallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [streamBroken, setStreamBroken] = useState(false);
+
+  useEffect(() => {
+    if (viewMode !== 'stream') {
+      if (fallbackRef.current) {
+        clearInterval(fallbackRef.current);
+        fallbackRef.current = null;
+      }
+      return;
+    }
+
+    const img = twinImgRef.current;
+    if (!img) return;
+
+    const onError = () => {
+      setStreamBroken(true);
+      if (fallbackRef.current) return;
+      fallbackRef.current = setInterval(() => {
+        if (img) img.src = `${API.TWIN_SNAPSHOT}?t=${Date.now()}`;
+      }, 200);
+    };
+
+    const onLoad = () => {
+      if (img.src.includes('/twin_stream')) {
+        setStreamBroken(false);
+        if (fallbackRef.current) {
+          clearInterval(fallbackRef.current);
+          fallbackRef.current = null;
+        }
+      }
+    };
+
+    img.addEventListener('error', onError);
+    img.addEventListener('load', onLoad);
+    return () => {
+      img.removeEventListener('error', onError);
+      img.removeEventListener('load', onLoad);
+      if (fallbackRef.current) clearInterval(fallbackRef.current);
+    };
+  }, [viewMode]);
+
   return (
     <div className="panel camera2-panel">
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <Package size={13} strokeWidth={1.8} style={{ color: 'var(--text-muted)' }} />
-          <span className="panel-title">Camera 02 — HMR 3D Visualization</span>
+          <Package size={14} strokeWidth={2} style={{ color: 'var(--indigo)' }} />
+          <span className="panel-title">Camera 02 — Digital Twin Output</span>
         </div>
         <div className="viewer-controls">
-          <Tog active={showGrid}   onClick={() => setShowGrid(g => !g)}   icon={<LayoutGrid size={11} strokeWidth={1.8} />} label="Grid" />
-          <Tog active={showLabels} onClick={() => setShowLabels(l => !l)} icon={<Eye size={11} strokeWidth={1.8} />} label="Labels" />
-          <Tog active={showJoints} onClick={() => setShowJoints(j => !j)} icon={<Eye size={11} strokeWidth={1.8} />} label="Joints" />
-          <button className="ctrl-btn ctrl-btn-sm" onClick={() => setResetTrigger(t => t + 1)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <RefreshCw size={11} strokeWidth={2} /> Reset View
-          </button>
+          {/* Mode Switcher */}
+          <div style={{ display: 'flex', background: 'var(--surface-3)', padding: 2, borderRadius: 'var(--radius-sm)', gap: 3, marginRight: 4 }}>
+            <button
+              type="button"
+              className={`toggle-btn ${viewMode === 'stream' ? 'toggle-active' : ''}`}
+              onClick={() => setViewMode('stream')}
+              style={{ fontSize: 10, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <Video size={10} strokeWidth={2} /> Twin Stream
+            </button>
+            <button
+              type="button"
+              className={`toggle-btn ${viewMode === '3d' ? 'toggle-active' : ''}`}
+              onClick={() => setViewMode('3d')}
+              style={{ fontSize: 10, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <Package size={10} strokeWidth={2} /> 3D Interactive
+            </button>
+          </div>
+
+          {viewMode === '3d' && (
+            <>
+              <Tog active={showGrid}   onClick={() => setShowGrid(g => !g)}   icon={<LayoutGrid size={11} strokeWidth={1.8} />} label="Grid" />
+              <Tog active={showLabels} onClick={() => setShowLabels(l => !l)} icon={<Eye size={11} strokeWidth={1.8} />} label="Labels" />
+              <Tog active={showJoints} onClick={() => setShowJoints(j => !j)} icon={<Eye size={11} strokeWidth={1.8} />} label="Joints" />
+              <button className="ctrl-btn ctrl-btn-sm" onClick={() => setResetTrigger(t => t + 1)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <RefreshCw size={11} strokeWidth={2} /> Reset View
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="canvas-wrapper">
-        <Canvas
-          camera={{ position: [1.4, 1.1, 1.7], fov: 48 }}
-          shadows={{ type: THREE.PCFShadowMap }}
-          gl={{ antialias: true, alpha: false }}
-          onCreated={({ gl }) => { gl.setClearColor('#EDF0F4', 1); }}
-        >
-          <CameraResetter trigger={resetTrigger} />
-          <OrbitControls
-            makeDefault
-            minDistance={0.5} maxDistance={6}
-            target={[0, 0.4, 0]}
-            enableDamping dampingFactor={0.07}
-          />
-          <Scene
-            data={data}
-            showGrid={showGrid}
-            showLabels={showLabels}
-            showJoints={showJoints}
-          />
-        </Canvas>
+        {viewMode === 'stream' ? (
+          <div className="stream-wrapper" style={{ width: '100%', height: '100%' }}>
+            <img
+              ref={twinImgRef}
+              src={API.TWIN_STREAM}
+              alt="Digital Twin Stream"
+              className="stream-img"
+            />
+            <div className="stream-overlay-top">
+              <span className="overlay-chip" style={{ color: '#A5B4FC' }}>DIGITAL TWIN ENGINE</span>
+              <span className="overlay-chip">{streamBroken ? 'SNAPSHOT MODE' : 'LIVE TWIN STREAM'}</span>
+            </div>
+          </div>
+        ) : (
+          <Canvas
+            camera={{ position: [1.4, 1.1, 1.7], fov: 48 }}
+            shadows={{ type: THREE.PCFShadowMap }}
+            gl={{ antialias: true, alpha: false }}
+            onCreated={({ gl }) => { gl.setClearColor('#EDF0F4', 1); }}
+          >
+            <CameraResetter trigger={resetTrigger} />
+            <OrbitControls
+              makeDefault
+              minDistance={0.5} maxDistance={6}
+              target={[0, 0.4, 0]}
+              enableDamping dampingFactor={0.07}
+            />
+            <Scene
+              data={data}
+              showGrid={showGrid}
+              showLabels={showLabels}
+              showJoints={showJoints}
+            />
+          </Canvas>
+        )}
 
         {/* HUD */}
         <div className="viewer-hud">

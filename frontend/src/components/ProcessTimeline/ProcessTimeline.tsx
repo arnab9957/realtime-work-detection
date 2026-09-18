@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Activity } from 'lucide-react';
 import { PROCESS_STEPS, STEP_LABELS } from '../../mock/fallbackData';
 import type { TelemetryData } from '../../types/api';
 
@@ -29,7 +30,10 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
   return (
     <div className="panel timeline-panel">
       <div className="panel-header">
-        <span className="panel-title">PROCESS TIMELINE</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <Activity size={14} strokeWidth={2} style={{ color: 'var(--green)' }} />
+          <span className="panel-title">PROCESS TIMELINE</span>
+        </div>
         <span className="panel-subtitle font-mono">
           STEP {telemetry.step} · {STEP_LABELS[telemetry.step_name] || telemetry.step_name}
         </span>

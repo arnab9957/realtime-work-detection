@@ -51,7 +51,7 @@ export function Camera1({ telemetry }: Camera1Props) {
     <div className="panel camera1-panel">
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <Layers size={13} strokeWidth={1.8} style={{ color: 'var(--text-muted)' }} />
+          <Layers size={14} strokeWidth={2} style={{ color: 'var(--cyan)' }} />
           <span className="panel-title">Camera 01 — HAR Output</span>
         </div>
         <span className={`feed-badge ${streamBroken ? 'badge-warn' : 'badge-live'}`}>

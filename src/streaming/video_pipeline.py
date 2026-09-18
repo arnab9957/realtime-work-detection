@@ -44,8 +44,46 @@ class StreamHandler(BaseHTTPRequestHandler):
                         break
                 time.sleep(0.033)  # ~30 FPS
 
+        elif self.path in ('/twin_stream', '/digital_twin_stream', '/twin_video'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            while getattr(self.server, 'running', True):
+                frame_bytes = getattr(self.server, 'latest_twin_jpeg', None)
+                if frame_bytes is not None:
+                    try:
+                        header = (
+                            b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n'
+                            b'Content-Length: ' + str(len(frame_bytes)).encode('ascii') + b'\r\n\r\n'
+                        )
+                        self.wfile.write(header + frame_bytes + b'\r\n')
+                        self.wfile.flush()
+                    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                        break
+                time.sleep(0.033)  # ~30 FPS
+
         elif self.path.startswith('/snapshot') or self.path.startswith('/frame.jpg'):
             frame_bytes = getattr(self.server, 'latest_jpeg', None)
+            if frame_bytes is not None:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(frame_bytes)))
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(frame_bytes)
+                self.wfile.flush()
+            else:
+                self.send_response(503)
+                self.end_headers()
+
+        elif self.path.startswith('/twin_snapshot') or self.path.startswith('/twin_frame.jpg'):
+            frame_bytes = getattr(self.server, 'latest_twin_jpeg', None)
             if frame_bytes is not None:
                 self.send_response(200)
                 self.send_header('Content-Type', 'image/jpeg')
@@ -246,6 +284,7 @@ class DualVideoPipeline:
             self._server = ThreadingHTTPServer(('0.0.0.0', self.stream_port), StreamHandler)
             self._server.running = True
             self._server.latest_jpeg = None
+            self._server.latest_twin_jpeg = None
             self._server.reset_requested = False
             self._server_thread = threading.Thread(target=self._server.serve_forever, daemon=True)
             self._server_thread.start()
@@ -286,7 +325,13 @@ class DualVideoPipeline:
         if self._server:
             self._server.current_experiment_id = exp_id
 
-    def write_frame(self, frame: np.ndarray, telemetry: Optional[dict] = None, scene_graph: Optional[dict] = None):
+    def write_frame(
+        self,
+        frame: np.ndarray,
+        telemetry: Optional[dict] = None,
+        scene_graph: Optional[dict] = None,
+        twin_frame: Optional[np.ndarray] = None
+    ):
         """Dispatches frame to local MP4 writer and encodes JPEG for streaming clients."""
         if frame is None:
             return
@@ -307,6 +352,10 @@ class DualVideoPipeline:
             ret, jpeg = cv2.imencode('.jpg', frame_resized, [cv2.IMWRITE_JPEG_QUALITY, 92])
             if ret:
                 self._server.latest_jpeg = jpeg.tobytes()
+            if twin_frame is not None:
+                ret_t, jpeg_t = cv2.imencode('.jpg', twin_frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
+                if ret_t:
+                    self._server.latest_twin_jpeg = jpeg_t.tobytes()
             if telemetry is not None:
                 self._server.latest_telemetry = telemetry
             if scene_graph is not None:
