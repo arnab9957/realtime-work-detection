@@ -301,7 +301,9 @@ def generate_experiment_video(output_path="experiments/sample_experiment_simulat
     - S2: Extract Yellow Box (or Anomaly if anomaly=True)
     - S3: Complete
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    d = os.path.dirname(output_path)
+    if d:
+        os.makedirs(d, exist_ok=True)
     width, height = 1280, 720
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # type: ignore
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
