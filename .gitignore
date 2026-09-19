@@ -109,4 +109,7 @@ ehthumbs.db
 *.tmp
 
 Digital-Twin
+
+multi-hmr2-main
 RelateAnything-main
+mesh_recovery

@@ -277,21 +277,21 @@ class PerceptionAgent:
         # 5. Detection for ISRO Dual-Box benchmark objects (Red Box, Yellow Box)
         # Spatial filtering: restrict to astronaut workspace (exclude upper wall & right background)
         if "red_box" not in objects:
-            mask_red1 = cv2.inRange(hsv, np.array([0, 110, 70]), np.array([12, 255, 255]))
-            mask_red2 = cv2.inRange(hsv, np.array([165, 110, 70]), np.array([180, 255, 255]))
+            mask_red1 = cv2.inRange(hsv, np.array([0, 70, 50]), np.array([15, 255, 255]))
+            mask_red2 = cv2.inRange(hsv, np.array([160, 70, 50]), np.array([180, 255, 255]))
             mask_red = cv2.bitwise_or(mask_red1, mask_red2)
             mask_red[:int(0.28 * h), :] = 0   # Exclude upper ceiling / background
             mask_red[:, int(0.62 * w):] = 0   # Exclude right wall
-            red_bbox, red_center = self._extract_largest_bbox(mask_red, "red_box", 2, min_area=1200, max_area=40000)
+            red_bbox, red_center = self._extract_largest_bbox(mask_red, "red_box", 2, min_area=200, max_area=150000)
             if red_bbox:
                 red_cam = self._pixel_to_camera_coord(red_center[0], red_center[1], depth_m=1.15)
                 objects["red_box"] = ExperimentObject(name="red_box", class_name="red_box", bbox=red_bbox, pos_rack=red_cam)
 
         if "yellow_box" not in objects:
-            mask_yellow = cv2.inRange(hsv, np.array([18, 120, 80]), np.array([36, 255, 255]))
+            mask_yellow = cv2.inRange(hsv, np.array([15, 70, 50]), np.array([40, 255, 255]))
             mask_yellow[:int(0.32 * h), :] = 0  # Exclude upper ceiling / background wall
             mask_yellow[:, int(0.62 * w):] = 0   # Exclude right wall
-            yel_bbox, yel_center = self._extract_largest_bbox(mask_yellow, "yellow_box", 2, min_area=1000, max_area=40000)
+            yel_bbox, yel_center = self._extract_largest_bbox(mask_yellow, "yellow_box", 2, min_area=200, max_area=150000)
             if yel_bbox:
                 yel_cam = self._pixel_to_camera_coord(yel_center[0], yel_center[1], depth_m=1.15)
                 objects["yellow_box"] = ExperimentObject(name="yellow_box", class_name="yellow_box", bbox=yel_bbox, pos_rack=yel_cam)
@@ -401,12 +401,22 @@ class PerceptionAgent:
         - Tracks the lifecycle across the complete procedural sequence.
         """
         if not cont_bbox:
-            return
+            # Fallback container coordinates if lost by neural detector
+            cont_ymin = h * 0.55
+            cont_xmin = w * 0.35
+            cont_xmax = w * 0.65
+            cont_cx = w * 0.50
+            cont_cy = h * 0.75
+            c_ymax = h
+        else:
+            cont_ymin = cont_bbox.ymin
+            cont_xmin = cont_bbox.xmin
+            cont_xmax = cont_bbox.xmax
+            cont_cx = (cont_bbox.xmin + cont_bbox.xmax) / 2.0
+            cont_cy = (cont_bbox.ymin + cont_bbox.ymax) / 2.0
+            c_ymax = cont_bbox.ymax
 
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        cont_ymin = cont_bbox.ymin
-        cont_cx = (cont_bbox.xmin + cont_bbox.xmax) / 2.0
-        cont_cy = (cont_bbox.ymin + cont_bbox.ymax) / 2.0
 
         # Extract detected wrists from pose
         wrists = []
@@ -426,23 +436,9 @@ class PerceptionAgent:
         if red_obj and red_obj.bbox:
             rcy = (red_obj.bbox.ymin + red_obj.bbox.ymax) / 2.0
             rcx = (red_obj.bbox.xmin + red_obj.bbox.xmax) / 2.0
-            # Check external non-container pixels
-            m_red1 = cv2.inRange(hsv, np.array([0, 90, 70]), np.array([12, 255, 255]))
-            m_red2 = cv2.inRange(hsv, np.array([165, 90, 70]), np.array([180, 255, 255]))
-            m_red = cv2.bitwise_or(m_red1, m_red2)
-            m_red[:int(0.28 * h), :] = 0
-            m_red[:, int(0.62 * w):] = 0
-            m_ext_r = m_red.copy()
-            c_x1 = max(0, int(cont_bbox.xmin - 10))
-            c_x2 = min(w, int(cont_bbox.xmax + 10))
-            c_y1 = max(0, int(cont_ymin - 10))
-            c_y2 = min(h, int(cont_bbox.ymax + 10))
-            m_ext_r[c_y1:c_y2, c_x1:c_x2] = 0
-            r_ext_px = cv2.countNonZero(m_ext_r)
-
-            is_outside_x = (rcx < cont_bbox.xmin - 20) or (rcx > cont_bbox.xmax + 20)
+            is_outside_x = (rcx < cont_xmin - 20) or (rcx > cont_xmax + 20)
             is_in_air = (rcy < cont_ymin - 20)
-            if is_outside_x or is_in_air or r_ext_px > 1500:
+            if is_outside_x or is_in_air:
                 red_obj.is_inside_container = False
                 red_obj.state = EntityState.EXTRACTED
                 self.red_was_extracted = True
@@ -455,20 +451,10 @@ class PerceptionAgent:
         if yel_obj and yel_obj.bbox:
             ycy = (yel_obj.bbox.ymin + yel_obj.bbox.ymax) / 2.0
             ycx = (yel_obj.bbox.xmin + yel_obj.bbox.xmax) / 2.0
-            m_yel = cv2.inRange(hsv, np.array([18, 80, 70]), np.array([36, 255, 255]))
-            m_yel[:int(0.32 * h), :] = 0
-            m_yel[:, int(0.62 * w):] = 0
-            m_ext_y = m_yel.copy()
-            c_x1 = max(0, int(cont_bbox.xmin - 10))
-            c_x2 = min(w, int(cont_bbox.xmax + 10))
-            c_y1 = max(0, int(cont_ymin - 10))
-            c_y2 = min(h, int(cont_bbox.ymax + 10))
-            m_ext_y[c_y1:c_y2, c_x1:c_x2] = 0
-            y_ext_px = cv2.countNonZero(m_ext_y)
 
-            is_outside_x = (ycx < cont_bbox.xmin - 20) or (ycx > cont_bbox.xmax + 20)
+            is_outside_x = (ycx < cont_xmin - 20) or (ycx > cont_xmax + 20)
             is_in_air = (ycy < cont_ymin - 20)
-            if is_outside_x or is_in_air or y_ext_px > 1200:
+            if is_outside_x or is_in_air:
                 yel_obj.is_inside_container = False
                 yel_obj.state = EntityState.EXTRACTED
                 self.yellow_was_extracted = True
@@ -618,8 +604,8 @@ class PerceptionAgent:
             self.payload_docked_frames += 1
             if self.payload_docked_frames >= 5:
                 self.payload_is_docked = True
-            comp_w = max(60.0, cont_bbox.width * 0.40)
-            comp_h = max(50.0, cont_bbox.height * 0.25)
+            comp_w = max(60.0, (cont_xmax - cont_xmin) * 0.40)
+            comp_h = max(50.0, (c_ymax - cont_ymin) * 0.25)
             in_bbox = BBox2D(
                 xmin=max(0.0, float(cont_cx - comp_w / 2)),
                 ymin=max(0.0, float(cont_cy - comp_h / 2)),
@@ -631,14 +617,14 @@ class PerceptionAgent:
                 name="component_box",
                 class_name="component_box",
                 bbox=in_bbox,
-                pos_rack=objects["container_box"].pos_rack,
+                pos_rack=objects["container_box"].pos_rack if "container_box" in objects else Vector3D(),
                 state=EntityState.DOCKED,
                 is_inside_container=True
             )
         # Case B: Box is open, but component has not yet been extracted (docked in cavity)
         elif lid_angle > 15.0 or "container_lid" in objects:
-            comp_w = max(60.0, cont_bbox.width * 0.40)
-            comp_h = max(50.0, cont_bbox.height * 0.25)
+            comp_w = max(60.0, (cont_xmax - cont_xmin) * 0.40)
+            comp_h = max(50.0, (c_ymax - cont_ymin) * 0.25)
             in_bbox = BBox2D(
                 xmin=max(0.0, float(cont_cx - comp_w / 2)),
                 ymin=max(0.0, float(cont_cy - comp_h / 2)),
@@ -650,7 +636,7 @@ class PerceptionAgent:
                 name="component_box",
                 class_name="component_box",
                 bbox=in_bbox,
-                pos_rack=objects["container_box"].pos_rack,
+                pos_rack=objects["container_box"].pos_rack if "container_box" in objects else Vector3D(),
                 state=EntityState.DOCKED,
                 is_inside_container=True
             )

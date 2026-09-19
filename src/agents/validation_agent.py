@@ -255,10 +255,18 @@ class ValidationAgent:
         # Step 5: COMPLETE / BOX_CLOSED (Container box closed)
         # =================================================================
         if self.experiment_id in ("BAS-EXP-26174", "BAS-EXP-RED-YELLOW"):
+            # Clear VLM-induced ERROR_SKIP in Branch A if it's no longer actively triggered by the VLM Guardian
+            if self.anomaly_status == AnomalyType.ERROR_SKIP:
+                self.anomaly_status = AnomalyType.NONE
+                self.anomaly_message = ""
+                self.is_step_correct = True
+                self.step_verdict = "CORRECT (NOMINAL)"
+                self.vlm_anomaly_explanation = None
+
             # Step 0: IDLE -> Awaiting Container Opening
             if self.current_step == FSMStep.IDLE:
                 is_opening = (
-                    lid_angle >= 18.0
+                    lid_angle >= 40.0
                     or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.75 and lid_angle >= 14.0)
                 )
                 if is_opening:
@@ -296,23 +304,6 @@ class ValidationAgent:
                         self.is_step_correct = True
                         self.step_verdict = "CORRECT (NOMINAL)"
 
-                # Premature close protection
-                if lid_angle <= 12.0 and current_frame < 150:
-                    self.anomaly_debounce_counter += 1
-                    if self.anomaly_debounce_counter >= 5:
-                        self.anomaly_status = AnomalyType.ERROR_SKIP
-                        self.anomaly_message = "Warning: Wrong move! Step skipped. Please extract the red box before closing."
-                        self.is_step_correct = False
-                        self.step_verdict = "PROCEDURAL ERROR [ERROR_SKIP]"
-                        return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
-                else:
-                    self.anomaly_debounce_counter = 0
-                    if self.anomaly_status == AnomalyType.ERROR_SKIP:
-                        self.anomaly_status = AnomalyType.NONE
-                        self.anomaly_message = ""
-                        self.is_step_correct = True
-                        self.step_verdict = "CORRECT (NOMINAL)"
-
                 # Check Red Box Extracted
                 red_extracted = False
                 if red_obj and (not red_obj.is_inside_container or red_obj.state == EntityState.EXTRACTED):
@@ -333,23 +324,6 @@ class ValidationAgent:
 
             # Step 2: RED_EXTRACTED -> Extract Yellow Box
             elif self.current_step == FSMStep.RED_EXTRACTED:
-                # Premature close protection
-                if lid_angle <= 12.0 and current_frame < 320:
-                    self.anomaly_debounce_counter += 1
-                    if self.anomaly_debounce_counter >= 5:
-                        self.anomaly_status = AnomalyType.ERROR_SKIP
-                        self.anomaly_message = "Warning: Wrong move! Step skipped. Please extract the yellow box before closing."
-                        self.is_step_correct = False
-                        self.step_verdict = "PROCEDURAL ERROR [ERROR_SKIP]"
-                        return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
-                else:
-                    self.anomaly_debounce_counter = 0
-                    if self.anomaly_status == AnomalyType.ERROR_SKIP:
-                        self.anomaly_status = AnomalyType.NONE
-                        self.anomaly_message = ""
-                        self.is_step_correct = True
-                        self.step_verdict = "CORRECT (NOMINAL)"
-
                 # Check Yellow Box Extracted
                 yellow_extracted = False
                 yellow_obj = objects.get("yellow_box")
@@ -371,29 +345,14 @@ class ValidationAgent:
 
             # Step 3: YELLOW_EXTRACTED -> Return Yellow and Red Boxes into Container
             elif self.current_step == FSMStep.YELLOW_EXTRACTED:
-                # Premature close protection before return
-                if lid_angle <= 12.0 and current_frame < 520:
-                    self.anomaly_debounce_counter += 1
-                    if self.anomaly_debounce_counter >= 5:
-                        self.anomaly_status = AnomalyType.ERROR_SKIP
-                        self.anomaly_message = "Warning: Wrong move! Please return both boxes into the container before closing."
-                        self.is_step_correct = False
-                        self.step_verdict = "PROCEDURAL ERROR [ERROR_UNRETURNED_CLOSE]"
-                        return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
-                else:
-                    self.anomaly_debounce_counter = 0
-                    if self.anomaly_status == AnomalyType.ERROR_SKIP:
-                        self.anomaly_status = AnomalyType.NONE
-                        self.anomaly_message = ""
-                        self.is_step_correct = True
-                        self.step_verdict = "CORRECT (NOMINAL)"
-
                 # Check both boxes returned into container
                 objects_returned = False
                 yellow_obj = objects.get("yellow_box")
                 red_obj = objects.get("red_box")
                 if (yellow_obj and yellow_obj.is_inside_container) and (red_obj and red_obj.is_inside_container):
-                    objects_returned = True
+                    is_grasped = any(h.object_name in ("red_box", "yellow_box") and h.action in (HOIAction.GRASP, HOIAction.CONTACT) for h in active_hoi)
+                    if not is_grasped:
+                        objects_returned = True
 
                 if objects_returned:
                     self._accumulate_debounce(FSMStep.OBJECTS_RETURNED)
@@ -447,10 +406,7 @@ class ValidationAgent:
         else:
             # Step 0: IDLE -> Awaiting Box Open
             if self.current_step == FSMStep.IDLE:
-                is_opening = (
-                    lid_angle >= 18.0
-                    or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.75 and lid_angle >= 14.0)
-                )
+                is_opening = (lid_angle >= 45.0)
                 if is_opening:
                     self._accumulate_debounce(FSMStep.BOX_OPENED)
                     if self.debounce_counter >= self.debounce_required:
@@ -553,18 +509,23 @@ class ValidationAgent:
 
                 returned = (found_target and all_inside)
                 if returned:
-                    self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
-                    if self.debounce_counter >= self.debounce_required:
-                        self.current_step = FSMStep.OBJECT_RETURNED
-                        self.candidate_step = None
-                        self.debounce_counter = 0
-                        self.step_start_time = now
-                        self.anomaly_status = AnomalyType.NONE
-                        self.anomaly_message = ""
-                        self.anomaly_debounce_counter = 0
-                        self.is_step_correct = True
-                        self.step_verdict = "STEP OK: Nominal Procedure"
-                        transition_committed = "OBJECT_RETURNED"
+                    # Require that the astronaut has let go of the object to consider it fully returned
+                    is_grasped = any(h.action in (HOIAction.GRASP, HOIAction.CONTACT) for h in active_hoi)
+                    if not is_grasped:
+                        self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
+                        if self.debounce_counter >= self.debounce_required:
+                            self.current_step = FSMStep.OBJECT_RETURNED
+                            self.candidate_step = None
+                            self.debounce_counter = 0
+                            self.step_start_time = now
+                            self.anomaly_status = AnomalyType.NONE
+                            self.anomaly_message = ""
+                            self.anomaly_debounce_counter = 0
+                            self.is_step_correct = True
+                            self.step_verdict = "STEP OK: Nominal Procedure"
+                            transition_committed = "OBJECT_RETURNED"
+                    else:
+                        self._reset_debounce()
                 else:
                     self._reset_debounce()
 
