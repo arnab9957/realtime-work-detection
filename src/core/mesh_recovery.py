@@ -13,7 +13,7 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
         print("[Mesh Recovery] YOLO not found. Skipping preprocessing.")
         return False
         
-    yolo_world_path = os.path.abspath(os.path.join("RelateAnything-main", "yolov8s-worldv2.pt"))
+    yolo_world_path = os.path.abspath(os.path.join("models", "yolov8s-worldv2.pt"))
     if not os.path.exists(yolo_world_path):
         print(f"[Mesh Recovery] YOLO-World not found at {yolo_world_path}. Skipping preprocessing.")
         return False

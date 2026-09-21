@@ -111,18 +111,16 @@ class PerceptionAgent:
         self.frame_count = 0
         self.last_relations = {}  # Cache relations across frames
         
-        import sys
-        _ra_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../RelateAnything-main/RelateAnything-main"))
-        if os.path.exists(_ra_path) and _ra_path not in sys.path:
-            sys.path.insert(0, _ra_path)
+
         
         try:
-            from relsgg import RelateAnything  # type: ignore
+            from relsgg.api import RelateAnything  # type: ignore
             # Use CPU as hardware configuration specified no GPU
             self.relate_anything = RelateAnything.from_pretrained("maelic/relsgg-vits16plus", device="cpu")
             self.relate_anything.set_vocabulary([
-                "standing next to", "far away from", "holding", "touching", "looking at",
-                "dancing", "walking away"
+                "on", "on top of", "in front of", "behind", "beside", 
+                "inside", "contained in", "above", "below", "holding",
+                "standing next to", "far away from", "touching", "looking at"
             ])
             print("[Perception Agent] RelateAnything engaged on CPU.")
         except Exception as e:
@@ -161,18 +159,22 @@ class PerceptionAgent:
             try:
                 # conf=0.25 cleanly rejects background clutter while preserving real boxes (conf ~0.85-0.97)
                 results = self.model(frame, verbose=False, conf=0.25)
-                if results and len(results) > 0 and results[0].boxes:
-                    class_names = getattr(self.model, "names", {
-                        0: "container_box", 1: "container_lid", 2: "component_box",
-                        3: "operator_hand", 4: "human_body"
-                    })
-                    boxes_sorted = sorted(results[0].boxes, key=lambda b: float(b.conf[0].item()), reverse=True)
+                if results and len(results) > 0 and getattr(results[0], "boxes", None) is not None:
+                    class_names = getattr(self.model, "names", None)
+                    if not class_names:
+                        class_names = {
+                            0: "container_box", 1: "container_lid", 2: "component_box",
+                            3: "operator_hand", 4: "human_body"
+                        }
+                    
+                    boxes_list = list(results[0].boxes)  # type: ignore
+                    boxes_sorted = sorted(boxes_list, key=lambda b: float(b.conf[0]), reverse=True)  # type: ignore
                     frame_area = float(w * h)
                     for box in boxes_sorted:
-                        cls_id = int(box.cls[0].item())
-                        conf = float(box.conf[0].item())
-                        bx1, by1, bx2, by2 = box.xyxy[0].tolist()
-                        name = class_names.get(cls_id, f"obj_{cls_id}")
+                        cls_id = int(box.cls[0])  # type: ignore
+                        conf = float(box.conf[0])  # type: ignore
+                        bx1, by1, bx2, by2 = map(float, box.xyxy[0])  # type: ignore
+                        name = class_names.get(cls_id, f"obj_{cls_id}")  # type: ignore
 
                         box_w = bx2 - bx1
                         box_h = by2 - by1
@@ -183,8 +185,8 @@ class PerceptionAgent:
                             continue
 
                         b = BBox2D(
-                            xmin=float(bx1), ymin=float(by1),
-                            xmax=float(bx2), ymax=float(by2),
+                            xmin=bx1, ymin=by1,
+                            xmax=bx2, ymax=by2,
                             confidence=conf, class_id=cls_id, class_name=name
                         )
                         center = ((bx1 + bx2) / 2.0, (by1 + by2) / 2.0)
@@ -340,7 +342,7 @@ class PerceptionAgent:
 
         # 9. Real-Time Spatial and Interaction Relation Prediction (Every 15 frames)
         if self.relate_anything is not None:
-            if self.frame_count % 15 == 0 and len(objects) >= 2:
+            if (self.frame_count == 1 or self.frame_count % 15 == 0) and len(objects) >= 2:
                 try:
                     # Prepare object list and their boxes
                     obj_names = list(objects.keys())
