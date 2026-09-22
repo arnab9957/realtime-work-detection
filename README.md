@@ -85,41 +85,25 @@ stateDiagram-v2
 
 ## 4. Quick Start & Execution Guide
 
-### Prerequisites & CPU-Only Setup
-Ensure you have **Python 3.10 or 3.11** installed. Create and activate a virtual environment:
+### Prerequisites
+Create and activate a virtual environment, then install the required packages:
 
 ```powershell
 # Windows (PowerShell)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+# For GPU & CUDA acceleration (e.g. NVIDIA RTX series with CUDA 12.x):
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements.txt
 ```
 
 ```bash
 # Linux / macOS
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-**1. Install CPU-Optimized PyTorch (Crucial for non-GPU machines):**
-If you do not have an NVIDIA GPU, you MUST install the CPU-only version of PyTorch to avoid downloading gigabytes of useless CUDA binaries:
-```bash
-# For Windows and Linux
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# For macOS
-pip install torch torchvision torchaudio
-```
-
-**2. Install remaining dependencies:**
-```bash
 pip install -r requirements.txt
 ```
-
-**3. Install and Start Ollama (For Local VLM Verification):**
-This system uses a local Vision-Language Model (`Qwen3-VL:2B`) for real-time verification.
-- Download and install **Ollama** from [ollama.com/download](https://ollama.com/download).
-- Open a terminal and run: `ollama run qwen3-vl:2b-instruct`
-- Keep Ollama running in the background while executing `main.py`.
 
 ### 1. Run the Multi-Agent System (Default Simulation Video)
 ```bash
@@ -162,59 +146,52 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 ---
 
-## 5. How to Train Custom Experiments
-
-You can easily adapt this system for new procedural experiments. We provide a generalized CLI script to train both the Object Detector (YOLO) and the Human Activity Recognition (HAR) models seamlessly.
-
-### Step 1: Prepare Your Data
-- **Detector Data**: Provide a standard YOLO format `data.yaml` pointing to your annotated bounding boxes.
-- **HAR Data**: Provide a structured JSON timeline (e.g., `action_labels.json`) tracking spatial metrics across experiment stages.
-
-### Step 2: Run the Unified Training Pipeline
-Use the `tools/train_experiment.py` script to train everything:
-```bash
-python tools/train_experiment.py \
-    --name my_experiment \
-    --detector-data dataset/my_experiment/data.yaml \
-    --har-data dataset/my_experiment/action_labels.json \
-    --epochs 12 \
-    --batch 16
-```
-
-The script will:
-1. Train the YOLO detector locally (Zero Cloud) and save it to `models/my_experiment_detector.pt`.
-2. Train the PyTorch HAR classifier and save it to `models/my_experiment_har.pt`.
-
----
-
-## 6. Repository Layout
+## 5. Repository Layout
 
 ```
 e:\SIH\
-├── assets/                        # Raw sample videos and static files
-├── configs/                       # FSM state definitions and camera calibration
-├── models/                        # Pre-trained YOLOv8 and HAR models (.pt)
-├── src/                           # Core Agent Architecture
-│   ├── core/                      # Shared memory and type contracts
-│   ├── agents/                    # 8-Agent logic (Perception, Fusion, HAR, etc.)
-│   ├── audio/                     # Offline TTS synthesis
-│   ├── streaming/                 # Video pipeline and networking
-│   ├── telemetry/                 # JSONL data loggers
-│   └── gui/                       # Web & Tkinter Mission Control consoles
-├── tests/                         # End-to-end integration and unit tests
-├── tools/                         # Unified CLI scripts and data generators
-│   ├── train_experiment.py        # Generalized unified training pipeline
-│   ├── legacy/                    # Archived legacy training scripts
-│   └── ...                        # Generators and annotators
-├── experiments/                   # Generated test videos and telemetry outputs
-├── main.py                        # Single unified launcher executing MAS
-├── requirements.txt               # Dependency specifications
+├── configs/
+│   ├── experiment_fsm.json        # FSM state definitions, debouncing rules & spoken prompts
+│   └── camera_calib.json          # Intrinsics K and extrinsic transform [R | T] to Rack Frame R
+├── src/
+│   ├── core/
+│   │   ├── types.py               # Shared data contracts (Vector3D, BBox2D, HOIInteraction)
+│   │   └── shared_memory.py       # Thread-safe Digital Twin Blackboard memory
+│   ├── agents/
+│   │   ├── perception_agent.py    # YOLOv8n + PhysAstro-Pose HMR runner
+│   │   ├── imu_agent.py           # 128Hz IMU ingestion, ZUPT & synthetic kinematics
+│   │   ├── fusion_agent.py        # Constrained UKF + Biomechanical ROM boundary projection
+│   │   ├── har_agent.py           # AdaSpot RoI cropper + HOI metrics (Approach, Grasp, Extract)
+│   │   ├── digital_twin_agent.py  # 3D virtual rack and astronaut scene synchronizer
+│   │   ├── validation_agent.py    # Authoritative deterministic FSM validator (15-frame debounce)
+│   │   ├── reasoning_agent.py     # Procedural guidance, context generator & recovery planner
+│   │   └── monitoring_agent.py    # Dual video, offline TTS, JSONL telemetry & GUI coordinator
+│   ├── audio/
+│   │   └── offline_tts.py         # Sub-100ms non-blocking offline speech synthesizer
+│   ├── streaming/
+│   │   └── video_pipeline.py      # Local H.264 video recorder + HTTP/MJPEG broadcast server
+│   ├── telemetry/
+│   │   └── jsonl_logger.py        # 3,000,000:1 structured telemetry compressor
+│   └── gui/
+│       ├── mission_gui.py         # Native Tkinter spaceflight mission control dashboard
+│       └── web_twin/
+│           └── index.html         # Modern web-based Mission Control & 3D Digital Twin console
+├── tools/
+│   ├── generate_synthetic_data.py # Procedural 3D microgravity dataset generator & animator
+│   └── webcam_annotator.py        # Interactive webcam recorder with color-assisted annotation
+├── tests/
+│   ├── test_fsm_debouncing.py     # Tests 15-frame debounce, ERROR_SEQ, and ERROR_SKIP
+│   ├── test_telemetry_ratio.py    # Mathematically audits 3,000,000:1 compression ratio
+│   └── test_multi_agent_flow.py   # End-to-end integration test of all 8 agents
+├── experiments/                   # Generated test videos, telemetry logs and recordings
+├── main.py                        # Single unified launcher executing the entire multi-agent system
+├── requirements.txt               # Dependencies specification
 └── README.md                      # System documentation
 ```
 
 ---
 
-## 7. Spaceflight Avionics Qualification Roadmap
+## 6. Spaceflight Avionics Qualification Roadmap
 
 * **Flight Target Hardware**: Dual-compute architecture pairing the **NVIDIA Jetson Orin NX (10–25W)** for vision/HMR inference with the **NASA/Microchip PIC64-HPSC (RISC-V)** executing the deterministic FSM and telemetry serializer in an isolated RTOS partition (VxWorks / WorldGuard).
 * **Thermal Dissipation**: Conduction-cooled baseplate connected to the BAS-03 laboratory liquid loop.

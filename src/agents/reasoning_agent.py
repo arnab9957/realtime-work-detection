@@ -79,6 +79,7 @@ class ReasoningAgent:
                 anom_key = anomaly.value if hasattr(anomaly, "value") else str(anomaly)
                 anom_dict = self.config.get("anomalies", {})
                 anom_info = anom_dict.get(anom_key) or anom_dict.get(getattr(anomaly, "name", ""), {})
+                voice_alert = anom_info.get("alert_tts")
             if not voice_alert:
                 voice_alert = "Warning: Wrong move! Procedural deviation detected."
 

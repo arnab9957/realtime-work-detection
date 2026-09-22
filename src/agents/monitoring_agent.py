@@ -93,7 +93,8 @@ class MonitoringAgent:
         is_step_correct: bool = True,
         step_verdict: str = "CORRECT (NOMINAL)",
         experiment_id: str = "BAS-EXP-BOX-RETURN",
-        scene_graph: Optional[Dict[str, Any]] = None
+        scene_graph: Optional[Dict[str, Any]] = None,
+        spatial_relations: Optional[List[str]] = None
     ) -> np.ndarray:
         """
         Synthesizes audio alerts, logs session actions to JSON, and renders live HUD overlays.
@@ -174,7 +175,8 @@ class MonitoringAgent:
             source_type=source_type,
             is_step_correct=is_step_correct,
             step_verdict=step_verdict,
-            experiment_id=experiment_id
+            experiment_id=experiment_id,
+            spatial_relations=spatial_relations
         )
 
         # 6. Dispatch to Dual Video Pipeline (Local MP4 + RTSP Stream + Web API)
@@ -232,7 +234,8 @@ class MonitoringAgent:
         source_type: str = "LIVE_WEBCAM",
         is_step_correct: bool = True,
         step_verdict: str = "CORRECT (NOMINAL)",
-        experiment_id: str = "BAS-EXP-BOX-RETURN"
+        experiment_id: str = "BAS-EXP-BOX-RETURN",
+        spatial_relations: Optional[List[str]] = None
     ) -> np.ndarray:
         frame = raw_frame.copy()
         h, w, _ = frame.shape
@@ -619,6 +622,26 @@ class MonitoringAgent:
             # Draw border
             cv2.rectangle(frame, (pip_x - 2, pip_y - 2), (pip_x + pip_w + 2, pip_y + pip_h + 2), (255, 255, 255), 2)
             frame[pip_y:pip_y+pip_h, pip_x:pip_x+pip_w] = tc_resized
+
+        # Display Spatial Relations (Always show the section to indicate it's active)
+        rel_scale = max(0.32, scale * 0.8)
+        start_y = banner_h + 20
+        start_x = 10
+        
+        # Draw background panel for readability
+        panel_h = 20 + max(1, min(5, len(spatial_relations) if spatial_relations else 1)) * 20
+        panel_w = max(200, int(w * 0.25))
+        cv2.rectangle(frame, (start_x - 5, banner_h + 5), (start_x + panel_w, banner_h + 5 + panel_h), (20, 20, 30), -1)
+        cv2.rectangle(frame, (start_x - 5, banner_h + 5), (start_x + panel_w, banner_h + 5 + panel_h), (0, 255, 255), 1)
+        
+        cv2.putText(frame, "SPATIAL RELATIONS:", (start_x, start_y), cv2.FONT_HERSHEY_SIMPLEX, rel_scale, (0, 255, 255), 1, cv2.LINE_AA)
+        
+        if spatial_relations:
+            for i, rel_str in enumerate(spatial_relations[:5]): # Show top 5
+                y_offset = start_y + (i + 1) * 20
+                cv2.putText(frame, rel_str, (start_x, y_offset), cv2.FONT_HERSHEY_SIMPLEX, rel_scale, (255, 255, 255), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "Searching...", (start_x, start_y + 20), cv2.FONT_HERSHEY_SIMPLEX, rel_scale, (150, 150, 150), 1, cv2.LINE_AA)
 
         return frame
 

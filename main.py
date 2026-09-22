@@ -24,6 +24,15 @@ import argparse
 import cv2
 import numpy as np
 
+# Add RelateAnything to path
+sys.path.insert(0, os.path.join(_workspace_dir, "RelateAnything-main"))
+try:
+    from deploy.postprocess import ThresholdConfig # type: ignore
+    from deploy.runtime import DetectorConfig, ScenePipeline # type: ignore
+except ImportError as e:
+    print(f"CRITICAL: Failed to import ScenePipeline: {e}")
+    ScenePipeline = None
+
 # Core & Blackboard
 from src.core.types import FSMStep, AnomalyType
 from src.core.shared_memory import DigitalTwinBlackboard
@@ -33,8 +42,10 @@ from src.agents.perception_agent import PerceptionAgent
 from src.agents.imu_agent import IMUAgent
 from src.agents.fusion_agent import FusionAgent
 from src.agents.har_agent import HARAgent
+from src.agents.spatial_agent import SpatialAgent
 from src.agents.digital_twin_agent import DigitalTwinAgent
 from src.agents.validation_agent import ValidationAgent
+
 from src.agents.reasoning_agent import ReasoningAgent
 from src.agents.monitoring_agent import MonitoringAgent
 from src.llm.realtime_llm_verifier import RealtimeLLMVerifier
@@ -59,21 +70,23 @@ def run_orchestrator(
     print("   ISRO SIH Problem Statement #26174")
     print("=" * 70)
 
-    if config_path is None:
-        config_path = "configs/red_yellow_fsm.json"
-
     # Detect if source or protocol is the Red-Yellow experiment
     is_red_yellow = (
         "red_yellow" in str(source).lower()
+        or "clip.mp4" in str(source).lower()
         or (config_path is not None and "red_yellow" in str(config_path).lower())
     )
 
     if is_red_yellow:
+        if config_path is None or "box_return" in str(config_path):
+            config_path = "configs/red_yellow_fsm.json"
         if realtime_feed_dir == "realtime_feed":
             realtime_feed_dir = "realtime_feed_red_yellow"
         if output_csv_dir is None:
             output_csv_dir = "experiments_red_yellow"
     else:
+        if config_path is None:
+            config_path = "configs/box_return_fsm.json"
         if output_csv_dir is None:
             output_csv_dir = "experiments"
 
@@ -83,6 +96,28 @@ def run_orchestrator(
 
     # 1. Initialize Shared Memory Blackboard
     blackboard = DigitalTwinBlackboard()
+
+    # 1.5. Initialize RelateAnything ScenePipeline
+    print("[Orchestrator] Initializing RelateAnything ScenePipeline for Spatial Relations...")
+    relate_pipe = None
+    if ScenePipeline is not None:
+        try:
+            relate_pipe = ScenePipeline(
+                dist_dir="RelateAnything-main/deploy/dist/relsgg-vits16plus",
+                detector="RelateAnything-main/deploy/dist/detector-local/detector.onnx",
+                backend="onnx",
+                det_cfg=DetectorConfig(conf=0.25, iou=0.5, max_det=32),
+                thr_cfg=ThresholdConfig(threshold=0.5, topk=20)
+            )
+            try:
+                relate_pipe.rel.set_predicates([
+                    "on", "on top of", "in front of", "behind", "beside", 
+                    "inside", "contained in", "above", "below", "holding"
+                ])
+            except Exception:
+                pass # Use baked predicates
+        except Exception as e:
+            print(f"[Orchestrator] Warning: Could not init RelateAnything pipeline: {e}")
 
     # 2. Instantiate Real-Time Asynchronous Local VLM Verifier (Ollama Qwen3-VL)
     print("[Orchestrator] Engaging Multimodal VLM Real-Time Verifier (qwen3-vl:2b-instruct @ http://localhost:11434)...")
@@ -96,6 +131,7 @@ def run_orchestrator(
     agent_perception = PerceptionAgent()
     agent_imu = IMUAgent()
     agent_fusion = FusionAgent()
+    agent_spatial = SpatialAgent()
     agent_har = HARAgent()
     agent_twin = DigitalTwinAgent(is_dual=is_red_yellow)
     print("[Orchestrator] Engaging Validation Engine...")
@@ -367,15 +403,9 @@ def run_orchestrator(
                             break
                         time.sleep(0.02)
 
-                # Loop video file for continuous exhibition/testing
-                print("\n[Orchestrator] Looping experiment from Step 0...")
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                reset_pipeline()
-                frame_id = 0
-                ret, raw_frame = cap.read()
-                if not ret:
-                    time.sleep(0.033)
-                    continue
+                # Prevent looping to gracefully close the video file and trigger mesh recovery
+                print("\n[Orchestrator] Reached end of video file. Gracefully exiting to finalize processing...")
+                break
 
             frame_id += 1
             if max_frames and frame_id > max_frames:
@@ -391,6 +421,20 @@ def run_orchestrator(
             # ==========================================
             t_infer_start = time.time()
 
+            # AGENT 0.5: RelateAnything Spatial Relations
+            spatial_relations = []
+            if relate_pipe is not None:
+                try:
+                    res = relate_pipe(raw_frame)
+                    for t in res.triplets:
+                        sub = t.subject_label.lower()
+                        obj = t.object_label.lower()
+                        if "box" in sub or "container" in sub or "box" in obj or "container" in obj:
+                            spatial_relations.append(f"[{sub}] is {t.predicate} [{obj}] (score: {t.score:.2f})")
+                except Exception as e:
+                    print(f"\n[DEBUG RelateAnything error]: {e}")
+                    pass
+
             # AGENT 1: Perception Agent (YOLOv8n + 3D HMR)
             objects_cam, pose_cam, lid_angle = agent_perception.process_frame(raw_frame)
 
@@ -403,8 +447,9 @@ def run_orchestrator(
             )
 
             # AGENT 4: HAR Agent (AdaSpot RoI + 3D Hand-Object Interaction Engine)
+            spatial_metrics = agent_spatial.evaluate_spatial_metrics(fused_pose, objects_rack)
             active_hoi, objects_state, current_activity = agent_har.evaluate_interactions(
-                fused_pose, objects_rack, lid_angle
+                fused_pose, objects_rack, lid_angle, spatial_metrics
             )
             # Push Telemetry Snapshot to Real-Time Local LLM Verifier
             comp_obj = objects_state.get("component_box")
@@ -415,14 +460,6 @@ def run_orchestrator(
 
             is_priority = (agent_validation.anomaly_status != AnomalyType.NONE) or (agent_validation.debounce_counter > 0)
             detected_names = list(objects_state.keys())
-
-            # Compile semantic relations for the LLM prompt
-            rel_strings = []
-            for obj_name, obj in objects_state.items():
-                if hasattr(obj, "relations") and obj.relations:
-                    for r in obj.relations:
-                        rel_strings.append(f"{r.subject_name} --{r.predicate}--> {r.object_name}")
-            semantic_relations_str = ", ".join(rel_strings) if rel_strings else "None"
 
             llm_verifier.push_telemetry(
                 frame_id=frame_id,
@@ -435,8 +472,8 @@ def run_orchestrator(
                 anomaly=agent_validation.anomaly_status,
                 frame=raw_frame,
                 detected_objects=detected_names,
-                force_priority=is_priority,
-                semantic_relations=semantic_relations_str
+                spatial_relations=spatial_relations,
+                force_priority=is_priority
             )
             llm_verif = llm_verifier.get_latest_verification()
 
@@ -517,7 +554,8 @@ def run_orchestrator(
                 is_step_correct=agent_validation.is_step_correct,
                 step_verdict=agent_validation.step_verdict,
                 experiment_id=agent_validation.experiment_id,
-                scene_graph=scene_graph
+                scene_graph=scene_graph,
+                spatial_relations=spatial_relations
             )
 
             # On-Screen Video Feed Display (Native OpenCV Window, only if Desktop GUI is NOT active)
@@ -552,7 +590,7 @@ def run_orchestrator(
 
             # Procedure Step Event Commit
             if trans_event:
-                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.name})")
+                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.get_name(is_red_yellow)})")
 
             # Procedural Completion: Trigger Automated Offline Local LLM Audit (Async / Non-Blocking)
             if trans_event in ("BOX_CLOSED", "YELLOW_BOX_EXTRACTED", "BENCHMARK_COMPLETE"):
@@ -574,7 +612,7 @@ def run_orchestrator(
                 vlm_wrong = llm_verif.get("what_is_wrong", "None")
                 wrong_disp = f" | Issue: {vlm_wrong[:35]}" if (vlm_wrong != "None" and not agent_validation.is_step_correct) else ""
                 sys.stdout.write(
-                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.name:16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
+                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.get_name(is_red_yellow):16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
                 )
                 sys.stdout.flush()
 
@@ -605,6 +643,21 @@ def run_orchestrator(
             agent_monitoring.close()
         except (Exception, KeyboardInterrupt):
             pass
+
+        # Trigger mesh recovery after video file is fully closed/finalized
+        try:
+            from src.core.mesh_recovery import start_async_mesh_recovery
+            video_to_process = None
+            if hasattr(agent_monitoring, 'video_pipeline') and agent_monitoring.video_pipeline and agent_monitoring.video_pipeline.local_output_path:
+                video_to_process = agent_monitoring.video_pipeline.local_output_path
+            elif source_type != "LIVE_WEBCAM" and isinstance(source, str):
+                video_to_process = source
+            
+            if video_to_process:
+                print(f"\n[Orchestrator] Automatically triggering Mesh Recovery on finalized video: {video_to_process}")
+                start_async_mesh_recovery(video_to_process)
+        except Exception as e:
+            print(f"[Orchestrator] Mesh Recovery finalization notice: {e}")
         
         # Calculate final telemetry compression audit
         try:

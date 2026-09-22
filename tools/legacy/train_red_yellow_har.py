@@ -11,7 +11,7 @@ import time
 import cv2
 import numpy as np
 
-WORKSPACE_ROOT = r"e:\SIH"
+WORKSPACE_ROOT = r"e:\BAS\realtime-work-detection"
 if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
 
@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-from ultralytics import YOLO
+from ultralytics import YOLO, YOLOWorld
 
 
 class ProceduralHARClassifier(nn.Module):
@@ -44,7 +44,7 @@ class ProceduralHARClassifier(nn.Module):
 
 
 def extract_telemetry_dataset(
-    video_path=os.path.join(WORKSPACE_ROOT, "red_yellow.mp4"),
+    video_path=os.path.join(WORKSPACE_ROOT, "clip.mp4"),
     csv_output=os.path.join(WORKSPACE_ROOT, "dataset", "red_yellow_dataset", "har_telemetry.csv"),
     stride=2
 ):
@@ -57,6 +57,25 @@ def extract_telemetry_dataset(
     if not os.path.exists(pose_model_path):
         pose_model_path = "yolov8n-pose.pt"
     pose_model = YOLO(pose_model_path)
+    
+    # Init YOLO-World and RelateAnything
+    yolo_world_path = os.path.join(WORKSPACE_ROOT, "RelateAnything-main", "yolov8s-worldv2.pt")
+    world_model = YOLOWorld(yolo_world_path)
+    world_model.set_classes(["person", "red box", "yellow box", "container"])
+    
+    ra_dir = os.path.join(WORKSPACE_ROOT, "RelateAnything-main")
+    if ra_dir not in sys.path:
+        sys.path.insert(0, ra_dir)
+    
+    from deploy.runtime import OnnxRelationHead  # type: ignore
+    from deploy.postprocess import decode, ThresholdConfig  # type: ignore
+    rel_path = os.path.join(ra_dir, "deploy", "dist", "relsgg-vits16plus", "relateanything.onnx")
+    bank_path = os.path.join(ra_dir, "deploy", "dist", "relsgg-vits16plus", "predicate_bank.npz")
+    rel_head = OnnxRelationHead(rel_path, bank_path=bank_path)
+    # Use predicates that we know are in the bank
+    my_preds = ["holding", "reaching for"]
+    rel_head.set_predicates(my_preds)
+    thr_cfg = ThresholdConfig(threshold=0.25)
 
     os.makedirs(os.path.dirname(csv_output), exist_ok=True)
     f_csv = open(csv_output, "w", newline="", encoding="utf-8")
@@ -85,52 +104,85 @@ def extract_telemetry_dataset(
 
         if frame_idx % stride == 0:
             sec = frame_idx / fps
+            step_id = 0
+            step_name = "IDLE"
+            lid_angle = 0.0
+            is_inside = 1
+            hand_dist = 0.65
 
-            if sec < 3.2:
-                step_id = 0
-                step_name = "IDLE"
-                lid_angle = 0.0
-                is_inside = 1
-                hand_dist = 0.65
-            elif sec < 5.5:
-                step_id = 1
-                step_name = "CONTAINER_OPEN"
-                # Lid opening transition
-                lid_angle = min(55.0, (sec - 3.2) / 2.3 * 55.0)
-                is_inside = 1
-                hand_dist = 0.25
-            elif sec < 11.2:
-                step_id = 2
-                step_name = "RED_EXTRACTED"
-                lid_angle = 55.0
-                is_inside = 0
-                hand_dist = 0.08
-            elif sec < 17.0:
+            # Object Detection & Relation inference
+            world_res = list(world_model(frame, verbose=False))[0]  # type: ignore
+            boxes = world_res.boxes.xyxy.cpu().numpy()  # type: ignore
+            conf = world_res.boxes.conf.cpu().numpy()  # type: ignore
+            labels_idx = world_res.boxes.cls.cpu().numpy()  # type: ignore
+            
+            mask = conf > 0.25
+            boxes = boxes[mask]
+            labels_idx = labels_idx[mask]
+            conf = conf[mask]
+            labels = [world_model.names[int(i)] for i in labels_idx]
+            
+            holding_red = False
+            holding_yellow = False
+            opening = False
+            
+            person_indices = [i for i, l in enumerate(labels) if "person" in l]
+            red_indices = [i for i, l in enumerate(labels) if "red" in l.lower()]
+            yellow_indices = [i for i, l in enumerate(labels) if "yellow" in l.lower()]
+            
+            if len(boxes) >= 2:
+                pred, pair, sub, obj, valid = rel_head(frame, boxes)
+                triplets = decode(pred, pair, sub, obj, valid, rel_head.predicates, thr_cfg, boxes_xyxy=boxes, box_scores=conf, box_labels=labels)
+                for t in triplets:
+                    if "hold" in t.predicate or "reach" in t.predicate:
+                        if "red" in str(t.object_label).lower(): holding_red = True
+                        if "yellow" in str(t.object_label).lower(): holding_yellow = True
+                        if "container" in str(t.object_label).lower(): opening = True
+            
+            if holding_yellow:
                 step_id = 3
                 step_name = "YELLOW_EXTRACTED"
                 lid_angle = 55.0
                 is_inside = 0
                 hand_dist = 0.08
-            else:
-                step_id = 4
-                step_name = "COMPLETE"
-                if sec < 21.0:
-                    lid_angle = 50.0
+            elif holding_red:
+                step_id = 2
+                step_name = "RED_EXTRACTED"
+                lid_angle = 55.0
+                is_inside = 0
+                hand_dist = 0.08
+            elif opening or (len(person_indices) > 0 and (len(red_indices) > 0 or len(yellow_indices) > 0)):
+                if sec < 17.0:
+                    step_id = 1
+                    step_name = "CONTAINER_OPEN"
+                    lid_angle = 55.0
                     is_inside = 1
-                    hand_dist = 0.20
+                    hand_dist = 0.25
                 else:
-                    lid_angle = max(0.0, 50.0 - (sec - 21.0) / 3.9 * 50.0)
+                    step_id = 4
+                    step_name = "COMPLETE"
+                    lid_angle = 0.0
+                    is_inside = 1
+                    hand_dist = 0.55
+            else:
+                if sec < 17.0:
+                    step_id = 0
+                    step_name = "IDLE"
+                else:
+                    step_id = 4
+                    step_name = "COMPLETE"
+                    lid_angle = 0.0
                     is_inside = 1
                     hand_dist = 0.55
 
             # Keypoints from pose model
-            res = pose_model(frame, verbose=False)[0]
+            res = list(pose_model(frame, verbose=False))[0]  # type: ignore
             wx, wy, wz = 0.0, 0.45, 1.2
             elbow_deg = 85.0
             shoulder_deg = 45.0
 
-            if res.keypoints is not None and len(res.keypoints) > 0:
-                kps = res.keypoints[0].data[0].tolist()
+            if getattr(res, 'keypoints', None) is not None and len(res.keypoints) > 0:  # type: ignore
+                kps = res.keypoints[0].data[0].tolist()  # type: ignore
                 # 10: right wrist, 8: right elbow, 6: right shoulder
                 if len(kps) > 10 and kps[10][2] > 0.2:
                     raw_wx, raw_wy = kps[10][0], kps[10][1]

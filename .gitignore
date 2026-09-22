@@ -109,4 +109,13 @@ ehthumbs.db
 *.tmp
 
 Digital-Twin
+
 RelateAnything-main
+mesh_recovery
+
+# Generated Data & Telemetry
+experiments/*.csv
+experiments/*.json
+experiments/mesh_recovery/
+output/
+realtime_feed/*.csv
