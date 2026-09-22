@@ -70,35 +70,33 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
     return True
 
 def start_async_mesh_recovery(video_path: str, output_dir: str = "experiments/mesh_recovery"):
-    """Triggers offline mesh recovery in a background thread."""
+    """Triggers offline mesh recovery synchronously to prevent main thread exit."""
     if not video_path or not os.path.exists(video_path):
         print(f"[Mesh Recovery] Error: Input video {video_path} not found.")
         return
 
-    def _worker():
-        try:
-            print(f"[Mesh Recovery] Starting async 3D mesh generation for {video_path}...")
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Pre-process the video to mask out background
-            preprocessed_video_path = os.path.join(output_dir, "masked_input.mp4")
-            success = _preprocess_video_for_hmr(video_path, preprocessed_video_path)
-            
-            hmr_input = preprocessed_video_path if success else video_path
-            
-            from multihmr2 import init_hmr_session, infer_video, render_results_video  # type: ignore
-            
-            checkpoint_path = "models/multihmr2.pt"
-            
-            sess = init_hmr_session(checkpoint_path, compile_model=False)
-            preds = infer_video(sess, hmr_input, tmp_dir=os.path.join(output_dir, "tmp"))
-            render_results_video(sess, preds, out_dir=output_dir, tmp_dir=os.path.join(output_dir, "tmp"))
-            
-            print(f"[Mesh Recovery] Successfully generated 3D meshes and video overlay in {output_dir}")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"[Mesh Recovery] Background worker error: {e}")
-
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
+    try:
+        print(f"[Mesh Recovery] Starting 3D mesh generation for {video_path}...")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Pre-process the video to mask out background
+        preprocessed_video_path = os.path.join(output_dir, "masked_input.mp4")
+        success = _preprocess_video_for_hmr(video_path, preprocessed_video_path)
+        
+        hmr_input = preprocessed_video_path if success else video_path
+        
+        from src.multihmr2.api import init_hmr_session, infer_video, render_results_video  # type: ignore
+        
+        checkpoint_path = "models/hmr2_checkpoints/multihmr2.pt"
+        
+        sess = init_hmr_session(checkpoint_path, compile_model=False)
+        tmp_dir = os.path.join(output_dir, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        preds = infer_video(sess, hmr_input, tmp_dir=tmp_dir)
+        render_results_video(sess, preds, out_dir=output_dir, tmp_dir=tmp_dir)
+        
+        print(f"[Mesh Recovery] Successfully generated 3D meshes and video overlay in {output_dir}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[Mesh Recovery] Mesh recovery error: {e}")

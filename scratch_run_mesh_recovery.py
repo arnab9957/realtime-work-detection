@@ -16,16 +16,18 @@ os.makedirs(output_dir, exist_ok=True)
 tmp_dir = os.path.join(output_dir, "tmp")
 os.makedirs(tmp_dir, exist_ok=True)
 
-hmr_src_path = os.path.abspath(os.path.join("multi-hmr2-main", "src"))
-if hmr_src_path not in sys.path:
-    sys.path.insert(0, hmr_src_path)
+from src.multihmr2 import init_hmr_session, infer_video, render_results_video  # type: ignore
 
-from multihmr2 import init_hmr_session, infer_video, render_results_video  # type: ignore
+checkpoint_path = "models/hmr2_checkpoints/multihmr2.pt"
 
-checkpoint_path = "multi-hmr2-main/checkpoints/multihmr2.pt"
-
+print("Initializing HMR session...")
 sess = init_hmr_session(checkpoint_path, compile_model=False)
+print("HMR session initialized.")
+print("Running inference...")
 preds = infer_video(sess, video_path, tmp_dir=os.path.join(output_dir, "tmp"))
+print("Inference completed.")
+print("Rendering results video...")
 render_results_video(sess, preds, out_dir=output_dir, tmp_dir=os.path.join(output_dir, "tmp"))
+print("Rendering completed.")
 
 print(f"Successfully generated 3D meshes and video overlay in {output_dir}")
