@@ -13,13 +13,13 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
         print("[Mesh Recovery] YOLO not found. Skipping preprocessing.")
         return False
         
-    yolo_world_path = os.path.abspath(os.path.join("RelateAnything-main", "yolov8s-worldv2.pt"))
+    yolo_world_path = os.path.abspath(os.path.join("models", "yolov8s-worldv2.pt"))
     if not os.path.exists(yolo_world_path):
         print(f"[Mesh Recovery] YOLO-World not found at {yolo_world_path}. Skipping preprocessing.")
         return False
         
     world_model = YOLO(yolo_world_path)
-    world_model.set_classes(["person"])
+    world_model.set_classes(["person"])  # type: ignore
     
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -29,7 +29,7 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # type: ignore
     out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
     
     while True:
@@ -37,9 +37,9 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
         if not ret:
             break
             
-        res = world_model(frame, verbose=False)[0]
-        boxes = res.boxes.xyxy.cpu().numpy()
-        conf = res.boxes.conf.cpu().numpy()
+        res = world_model(frame, verbose=False)[0]  # type: ignore
+        boxes = res.boxes.xyxy.cpu().numpy()  # type: ignore
+        conf = res.boxes.conf.cpu().numpy()  # type: ignore
         
         mask = conf > 0.3
         boxes = boxes[mask]
@@ -85,13 +85,15 @@ def start_async_mesh_recovery(video_path: str, output_dir: str = "experiments/me
         
         hmr_input = preprocessed_video_path if success else video_path
         
-        from src.multihmr2 import init_hmr_session, infer_video, render_results_video  # type: ignore
+        from src.multihmr2.api import init_hmr_session, infer_video, render_results_video  # type: ignore
         
         checkpoint_path = "models/hmr2_checkpoints/multihmr2.pt"
         
         sess = init_hmr_session(checkpoint_path, compile_model=False)
-        preds = infer_video(sess, hmr_input, tmp_dir=os.path.join(output_dir, "tmp"))
-        render_results_video(sess, preds, out_dir=output_dir, tmp_dir=os.path.join(output_dir, "tmp"))
+        tmp_dir = os.path.join(output_dir, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        preds = infer_video(sess, hmr_input, tmp_dir=tmp_dir)
+        render_results_video(sess, preds, out_dir=output_dir, tmp_dir=tmp_dir)
         
         print(f"[Mesh Recovery] Successfully generated 3D meshes and video overlay in {output_dir}")
     except Exception as e:

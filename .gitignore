@@ -119,3 +119,12 @@ experiments/*.json
 experiments/mesh_recovery/
 output/
 realtime_feed/*.csv
+
+
+
+
+multi-hmr2-main
+ffmpeg.exe
+ffplay.exe
+ffprobe.exe
+models.zip

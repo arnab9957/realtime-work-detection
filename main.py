@@ -24,8 +24,7 @@ import argparse
 import cv2
 import numpy as np
 
-# Add RelateAnything to path
-sys.path.insert(0, os.path.join(_workspace_dir, "RelateAnything-main"))
+# RelateAnything is now integrated directly
 try:
     from deploy.postprocess import ThresholdConfig # type: ignore
     from deploy.runtime import DetectorConfig, ScenePipeline # type: ignore
@@ -97,28 +96,6 @@ def run_orchestrator(
     # 1. Initialize Shared Memory Blackboard
     blackboard = DigitalTwinBlackboard()
 
-    # 1.5. Initialize RelateAnything ScenePipeline
-    print("[Orchestrator] Initializing RelateAnything ScenePipeline for Spatial Relations...")
-    relate_pipe = None
-    if ScenePipeline is not None:
-        try:
-            relate_pipe = ScenePipeline(
-                dist_dir="RelateAnything-main/deploy/dist/relsgg-vits16plus",
-                detector="RelateAnything-main/deploy/dist/detector-local/detector.onnx",
-                backend="onnx",
-                det_cfg=DetectorConfig(conf=0.25, iou=0.5, max_det=32),
-                thr_cfg=ThresholdConfig(threshold=0.5, topk=20)
-            )
-            try:
-                relate_pipe.rel.set_predicates([
-                    "on", "on top of", "in front of", "behind", "beside", 
-                    "inside", "contained in", "above", "below", "holding"
-                ])
-            except Exception:
-                pass # Use baked predicates
-        except Exception as e:
-            print(f"[Orchestrator] Warning: Could not init RelateAnything pipeline: {e}")
-
     # 2. Instantiate Real-Time Asynchronous Local VLM Verifier (Ollama Qwen3-VL)
     print("[Orchestrator] Engaging Multimodal VLM Real-Time Verifier (qwen3-vl:2b-instruct @ http://localhost:11434)...")
     llm_verifier = RealtimeLLMVerifier(
@@ -170,6 +147,13 @@ def run_orchestrator(
         except Exception as e:
             print(f"[Orchestrator] Desktop GUI warning: {e}. Falling back to Web/OpenCV mode.")
             show_window = True
+
+    # Spatial relations log file
+    spatial_log_path = os.path.join(output_csv_dir, f"spatial_relations_{time.strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+    print(f"[Orchestrator] Spatial Relations Log: {spatial_log_path}")
+    with open(spatial_log_path, "w") as sf:
+        sf.write("Frame ID | Spatial Relations\n")
+        sf.write("-" * 50 + "\n")
 
     # 3. Setup Video Source (Auto-Probe Live Webcam first for Real-Time Detection)
     source_type = "LIVE_WEBCAM"
@@ -421,22 +405,53 @@ def run_orchestrator(
             # ==========================================
             t_infer_start = time.time()
 
-            # AGENT 0.5: RelateAnything Spatial Relations
-            spatial_relations = []
-            if relate_pipe is not None:
-                try:
-                    res = relate_pipe(raw_frame)
-                    for t in res.triplets:
-                        sub = t.subject_label.lower()
-                        obj = t.object_label.lower()
-                        if "box" in sub or "container" in sub or "box" in obj or "container" in obj:
-                            spatial_relations.append(f"[{sub}] is {t.predicate} [{obj}] (score: {t.score:.2f})")
-                except Exception as e:
-                    print(f"\n[DEBUG RelateAnything error]: {e}")
-                    pass
-
             # AGENT 1: Perception Agent (YOLOv8n + 3D HMR)
             objects_cam, pose_cam, lid_angle = agent_perception.process_frame(raw_frame)
+
+            # Extract Spatial Relations from objects (populated by PerceptionAgent using RelateAnything)
+            spatial_relations = []
+            for obj in objects_cam.values():
+                if getattr(obj, 'relations', None):
+                    for r in obj.relations:
+                        spatial_relations.append(f"[{r.subject_name}] is {r.predicate} [{r.object_name}] (score: {r.score:.2f})")
+
+            # Heuristic spatial relations fallback relative to container
+            if not spatial_relations:
+                cont = objects_cam.get("container_box")
+                if cont and cont.bbox:
+                    for obj_name, obj in objects_cam.items():
+                        if obj_name in ["container_box", "container_lid", "hand", "operator_hand", "human_body", "person", "astronaut"]:
+                            continue
+                        if obj.bbox:
+                            cx, cy = obj.bbox.centroid
+                            if cont.bbox.xmin <= cx <= cont.bbox.xmax and cont.bbox.ymin <= cy <= cont.bbox.ymax:
+                                spatial_relations.append(f"[{obj_name}] is inside [container_box]")
+                            elif cy < cont.bbox.ymin:
+                                spatial_relations.append(f"[{obj_name}] is above [container_box]")
+                            elif cy > cont.bbox.ymax:
+                                spatial_relations.append(f"[{obj_name}] is below [container_box]")
+                            elif cx < cont.bbox.xmin:
+                                spatial_relations.append(f"[{obj_name}] is left of [container_box]")
+                            elif cx > cont.bbox.xmax:
+                                spatial_relations.append(f"[{obj_name}] is right of [container_box]")
+            
+            # Explicit Human Body Spatial Position (Deterministic 2D Depth Heuristic)
+            cont = objects_cam.get("container_box")
+            human = objects_cam.get("human_body") or objects_cam.get("person") or objects_cam.get("astronaut")
+            if cont and cont.bbox and human and human.bbox:
+                # Use ymax (feet position) to determine depth occlusion
+                # If human feet are higher up in the 2D image than the container bottom, they are behind
+                if human.bbox.ymax < cont.bbox.ymax - 20:
+                    spatial_relations.insert(0, "[human_body] is behind [container_box]")
+                elif human.bbox.ymax > cont.bbox.ymax + 20:
+                    spatial_relations.insert(0, "[human_body] is in front of [container_box]")
+                else:
+                    spatial_relations.insert(0, "[human_body] is beside [container_box]")
+            
+            # Log spatial relations to separate file
+            if spatial_relations:
+                with open(spatial_log_path, "a") as sf:
+                    sf.write(f"F{frame_id:04d} | {', '.join(spatial_relations)}\n")
 
             # AGENT 2: IMU Agent (128 Hz ingestion / virtual kinematics + ZUPT)
             imu_telemetry = agent_imu.update_from_vision(pose_cam)
