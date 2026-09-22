@@ -19,7 +19,7 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
         return False
         
     world_model = YOLO(yolo_world_path)
-    world_model.set_classes(["person"])
+    world_model.set_classes(["person"])  # type: ignore
     
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -29,7 +29,7 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # type: ignore
     out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
     
     while True:
@@ -37,9 +37,9 @@ def _preprocess_video_for_hmr(video_path: str, output_path: str) -> bool:
         if not ret:
             break
             
-        res = world_model(frame, verbose=False)[0]
-        boxes = res.boxes.xyxy.cpu().numpy()
-        conf = res.boxes.conf.cpu().numpy()
+        res = world_model(frame, verbose=False)[0]  # type: ignore
+        boxes = res.boxes.xyxy.cpu().numpy()  # type: ignore
+        conf = res.boxes.conf.cpu().numpy()  # type: ignore
         
         mask = conf > 0.3
         boxes = boxes[mask]
@@ -86,14 +86,9 @@ def start_async_mesh_recovery(video_path: str, output_dir: str = "experiments/me
             
             hmr_input = preprocessed_video_path if success else video_path
             
-            # Add multi-hmr2-main/src to sys.path so we can import multihmr2
-            hmr_src_path = os.path.abspath(os.path.join("multi-hmr2-main", "src"))
-            if hmr_src_path not in sys.path:
-                sys.path.insert(0, hmr_src_path)
-            
             from multihmr2 import init_hmr_session, infer_video, render_results_video  # type: ignore
             
-            checkpoint_path = "multi-hmr2-main/checkpoints/multihmr2.pt"
+            checkpoint_path = "models/multihmr2.pt"
             
             sess = init_hmr_session(checkpoint_path, compile_model=False)
             preds = infer_video(sess, hmr_input, tmp_dir=os.path.join(output_dir, "tmp"))
