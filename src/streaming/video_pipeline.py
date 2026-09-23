@@ -106,8 +106,11 @@ class StreamHandler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
             self.end_headers()
-            self.wfile.write(data_bytes)
-            self.wfile.flush()
+            try:
+                self.wfile.write(data_bytes)
+                self.wfile.flush()
+            except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                pass
 
         elif self.path.startswith('/reset') or self.path.startswith('/api/reset'):
             # Trigger real-time experiment reset

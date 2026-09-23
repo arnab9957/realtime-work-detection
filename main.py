@@ -176,7 +176,7 @@ def run_orchestrator(
             if not os.path.exists(fallback_source):
                 print(f"[Orchestrator] Generating simulation video '{fallback_source}'...")
                 from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source, anomaly=False)
+                generate_experiment_video(fallback_source)
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
             source_type = "RECORDED_CLIP"
@@ -199,7 +199,7 @@ def run_orchestrator(
             fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
             if not os.path.exists(fallback_source):
                 from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source, anomaly=False)
+                generate_experiment_video(fallback_source)
             print(f"[Orchestrator] Automatically falling back to video: '{fallback_source}'...")
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
@@ -212,7 +212,7 @@ def run_orchestrator(
         if not os.path.exists(source):
             print(f"[Orchestrator] Video file '{source}' not found. Generating default simulation...")
             from tools.generate_synthetic_data import generate_experiment_video
-            generate_experiment_video(source, anomaly=False)
+            generate_experiment_video(source)
         cap = cv2.VideoCapture(source)
         source_type = "RED_YELLOW" if "red_yellow" in str(source).lower() else "RECORDED_CLIP"
         print(f"[Orchestrator] Ingesting from Video File: {source}...")
@@ -440,6 +440,50 @@ def run_orchestrator(
             )
             llm_verif = llm_verifier.get_latest_verification()
 
+            # Synchronize real-time activity from VLM Verifier and semantic relations
+            procedural_stems = (
+                "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
+                "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
+                "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY"
+            )
+
+            if llm_verif:
+                vlm_act = llm_verif.get("detected_activity")
+                vlm_verdict = llm_verif.get("anomaly_verdict", "NOMINAL")
+                what_wrong = str(llm_verif.get("what_is_wrong", "")).lower()
+
+                if vlm_act and vlm_act.upper() not in ("IDLE", "OBSERVING", "NONE", ""):
+                    is_vlm_proc = any(stem in vlm_act.upper() for stem in procedural_stems)
+                    if vlm_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY") or not is_vlm_proc:
+                        current_activity = vlm_act.upper()
+                elif vlm_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY"):
+                    for kw, label in [
+                        ("danc", "DANCING"), ("walk", "WALKING AWAY"), ("pacing", "PACING / WALKING"),
+                        ("wav", "WAVING"), ("clap", "CLAPPING"), ("stretch", "STRETCHING"),
+                        ("phone", "USING PHONE"), ("drink", "DRINKING"), ("eat", "EATING"),
+                        ("jump", "JUMPING"), ("point", "POINTING / GESTURING"), ("gestur", "GESTURING"),
+                        ("scratch", "TOUCHING FACE / HEAD"), ("face", "TOUCHING FACE / HEAD"),
+                        ("head", "TOUCHING FACE / HEAD"), ("cross", "ARMS CROSSED"),
+                        ("hip", "HANDS ON HIPS"), ("rais", "HANDS RAISED"), ("talk", "TALKING"),
+                        ("watch", "LOOKING AT WATCH"), ("bend", "BENDING DOWN"), ("exercis", "EXERCISING")
+                    ]:
+                        if kw in what_wrong:
+                            current_activity = label
+                            break
+                    else:
+                        if "is " in what_wrong:
+                            extracted = what_wrong.split("is ", 1)[1].split(".")[0].split(",")[0].strip().upper()
+                            if extracted:
+                                current_activity = extracted
+
+            # Check semantic relations for anomalous non-procedural activity
+            for obj in objects_state.values():
+                if hasattr(obj, "relations") and obj.relations:
+                    for r in obj.relations:
+                        pred = r.predicate.upper()
+                        if pred not in ("HOLDING", "TOUCHING", "LOOKING AT", "STANDING NEXT TO", "NEAR", "NONE"):
+                            current_activity = pred
+
             # AGENT 5: Digital Twin Agent (3D Scene Synchronization & Render)
             scene_graph = agent_twin.sync_scene_state(
                 fused_pose, objects_state, lid_angle, agent_validation.current_step
@@ -448,8 +492,19 @@ def run_orchestrator(
 
             # AGENT 6: Validation Agent (Deterministic FSM + Adaptive Debounce + Local LLM Consensus)
             step, deb_count, anomaly, anomaly_msg, trans_event = agent_validation.evaluate_step(
-                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif
+                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif, current_activity=current_activity
             )
+
+            # Preserve ongoing procedural step and reflect any detected non-procedural activity across attributes
+            is_cur_proc = any(stem in current_activity.upper() for stem in procedural_stems)
+            if not is_cur_proc and current_activity.upper() not in ("IDLE", "OBSERVING", "STANDBY", ""):
+                clean_act = current_activity.replace("_", " ").strip()
+                anomaly = AnomalyType.ERROR_SEQ
+                anomaly_msg = f"Warning: Wrong move! {clean_act} is not part of the procedure."
+                agent_validation.anomaly_status = AnomalyType.ERROR_SEQ
+                agent_validation.anomaly_message = anomaly_msg
+                agent_validation.is_step_correct = False
+                agent_validation.step_verdict = f"ANOMALY: {clean_act} [NOT IN PROCEDURE]"
 
             # AGENT 7: Reasoning & Guidance Agent (Next-step suggestions + Anomaly alerts)
             instruction, voice_alert = agent_reasoning.evaluate_guidance(

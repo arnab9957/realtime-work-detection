@@ -81,6 +81,7 @@ class RealtimeLLMVerifier:
             self.step_names = self._get_protocol_step_names()
             self.reset()
 
+
     def _get_protocol_step_names(self) -> Dict[int, str]:
         if "red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id:
             return {
@@ -109,6 +110,7 @@ class RealtimeLLMVerifier:
             self.latest_verification = {
                 "verified_step": 0,
                 "step_name": "IDLE",
+                "detected_activity": "IDLE",
                 "confidence": 1.0,
                 "anomaly_verdict": "NOMINAL",
                 "what_is_wrong": "None",
@@ -187,7 +189,9 @@ class RealtimeLLMVerifier:
                 frame_snapshot = self.latest_frame.copy() if self.latest_frame is not None else None
                 objects_snapshot = list(self.latest_detected_objects)
 
-            result = self._query_llm_for_verification(history_snapshot, frame_snapshot, objects_snapshot)
+            result = self._query_llm_for_verification(
+                history_snapshot, frame=frame_snapshot, detected_objects=objects_snapshot
+            )
             if result:
                 with self.lock:
                     self.latest_verification = result
@@ -227,7 +231,7 @@ class RealtimeLLMVerifier:
 - Step 4: COMPLETE (Container lid closed <20 deg, procedure finished)"""
 
         prompt = f"""You are the autonomous procedural supervisor for Bharatiya Antariksh Station (BAS).
-Verify the active physical step and detect any procedural violations or out-of-sequence moves:
+Verify the active physical step, identify the real-time activity on camera, and detect any procedural violations or out-of-sequence moves:
 
 Valid Protocol Steps:
 {protocol_desc}
@@ -238,25 +242,30 @@ Recent Physical & YOLO Observations:
 - Current Activities: {', '.join(recent_activities)}
 - Detected Physical Objects: {detected_str}
 - Semantic Scene Relations: {recent_relations}
-- Candidate Step: {candidate_step} ({candidate_name})
+- Candidate Ongoing Step: {candidate_step} ({candidate_name})
 - YOLO Anomaly Flag: {recent['anomaly']}
 
 CRITICAL PROCEDURAL SUPERVISION RULES:
-1. Visually determine the actual physical step (0 to {self.max_step}).
-2. Check for sequence errors, skipped steps, future step actions done prematurely, or unlisted moves:
-   - If the Semantic Scene Relations show the person is "dancing", "walking away", or "far away from" the workspace, IMMEDIATELY set anomaly_verdict to "PROCEDURAL_ERROR" and state in what_is_wrong: "Warning: Wrong move! You are [dancing/walking away/far away]. Please return to the station and focus."
-   - If the Semantic Scene Relations show the person "touching" or "holding" the wrong object for the current step (e.g. holding the yellow box when they should be extracting the red box first), IMMEDIATELY set anomaly_verdict to "PROCEDURAL_ERROR" and state in what_is_wrong: "Warning: Wrong move! You skipped a step. Please roll back and perform the correct action."
-   - If the operator performs an action from a future step (e.g. attempting to close before extracting, or skipping an extraction step), set anomaly_verdict to "PROCEDURAL_ERROR" and state clearly: "Future step detected prematurely: [detail]".
-   - If an unlisted/unauthorized action occurs, set anomaly_verdict to "PROCEDURAL_ERROR".
+1. Identify the EXACT REAL-TIME ACTIVITY being performed by the person visible in the camera frame (e.g. "DANCING", "WAVING", "CLAPPING", "USING PHONE", "DRINKING", "STRETCHING", "WALKING AWAY", "OPENING CONTAINER", "EXTRACTING RED BOX", "HOLDING COMPONENT", "IDLE", "GESTURING", etc.).
+2. Determine whether the current action is nominal or anomalous:
+   - If the person is performing ANY non-procedural activity that is NOT required by the current step (such as dancing, waving, clapping, using a phone, drinking, eating, stretching, walking away, gesturing wildly, or any other unlisted move):
+     * Set detected_activity to the exact action being performed (e.g. "DANCING", "WAVING", "CLAPPING", "USING PHONE", "DRINKING", "STRETCHING", "WALKING AWAY", etc.).
+     * Set anomaly_verdict to "PROCEDURAL_ERROR".
+     * Set what_is_wrong to "Warning: Wrong move! Operator is [detected_activity]. This is not part of the procedure."
+     * Set corrective_action to "Stop [detected_activity] and proceed with {candidate_name}."
+     * DO NOT reset verified_step to 0; keep verified_step at {candidate_step} ({candidate_name}).
+   - If the operator performs an action from a future step or touches the wrong object (e.g. yellow before red), set anomaly_verdict to "PROCEDURAL_ERROR", keep verified_step at {candidate_step}, and explain what is wrong.
    - If nominal, set anomaly_verdict to "NOMINAL".
+3. NEVER reset the procedure step to Step 0 / IDLE when an anomaly occurs in the middle of the procedure. Always preserve the ongoing procedure candidate step ({candidate_step}) so the astronaut's progress is not lost.
 
 Reply strictly in valid JSON format:
 {{
-  "verified_step": <integer 0-{self.max_step}>,
+  "verified_step": <integer 0-{self.max_step}, maintain candidate step {candidate_step} during anomalies>,
   "step_name": "<valid step name from protocol>",
+  "detected_activity": "<real-time activity being performed on camera, e.g. 'DANCING', 'WAVING', 'USING PHONE', 'EXTRACTING COMPONENT', 'OPENING CONTAINER', 'IDLE'>",
   "confidence": <float 0.0-1.0>,
   "anomaly_verdict": "NOMINAL" | "PROCEDURAL_ERROR" | "PHYSICAL_ANOMALY",
-  "what_is_wrong": "<brief explanation if wrong move / future step, else 'None'>",
+  "what_is_wrong": "<brief explanation if wrong move / anomaly, else 'None'>",
   "corrective_action": "<corrective action, or 'Continue nominal procedure'>",
   "reason": "<1-sentence summary of visual evidence>"
 }}"""
@@ -268,7 +277,7 @@ Reply strictly in valid JSON format:
             "options": {
                 "temperature": 0.1,
                 "top_p": 0.8,
-                "num_predict": 130
+                "num_predict": 140
             }
         }
 
@@ -317,6 +326,60 @@ Reply strictly in valid JSON format:
                 corrective_action = parsed.get("corrective_action", "Continue nominal procedure.")
                 reason = parsed.get("reason", "Verified by Multimodal VLM supervisor.")
 
+                # Extract real-time detected activity
+                detected_activity = str(parsed.get("detected_activity", "")).strip().upper()
+                if not detected_activity or detected_activity in ("NONE", "NULL"):
+                    detected_activity = recent.get("activity", "IDLE")
+
+                # Check keywords in explanation or response
+                combined_desc = (what_is_wrong + " " + reason + " " + detected_activity).lower()
+                for keyword, act_name in [
+                    ("danc", "DANCING"),
+                    ("walk", "WALKING AWAY"),
+                    ("pacing", "PACING / WALKING"),
+                    ("wav", "WAVING"),
+                    ("clap", "CLAPPING"),
+                    ("stretch", "STRETCHING"),
+                    ("phone", "USING PHONE"),
+                    ("drink", "DRINKING"),
+                    ("eat", "EATING"),
+                    ("jump", "JUMPING"),
+                    ("point", "POINTING / GESTURING"),
+                    ("gestur", "GESTURING"),
+                    ("scratch", "TOUCHING FACE / HEAD"),
+                    ("face", "TOUCHING FACE / HEAD"),
+                    ("head", "TOUCHING FACE / HEAD"),
+                    ("cross", "ARMS CROSSED"),
+                    ("hip", "HANDS ON HIPS"),
+                    ("rais", "HANDS RAISED"),
+                    ("talk", "TALKING"),
+                    ("watch", "LOOKING AT WATCH"),
+                    ("bend", "BENDING DOWN"),
+                    ("exercis", "EXERCISING")
+                ]:
+                    if keyword in combined_desc:
+                        detected_activity = act_name
+                        anomaly_verdict = "PROCEDURAL_ERROR"
+                        break
+
+                # If detected_activity is ANY non-procedural activity, ensure it triggers procedural error
+                procedural_keywords = (
+                    "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
+                    "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
+                    "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY", "NONE"
+                )
+                is_proc = any(kw in detected_activity for kw in procedural_keywords)
+                if not is_proc and detected_activity not in ("IDLE", "OBSERVING", "STANDBY", ""):
+                    anomaly_verdict = "PROCEDURAL_ERROR"
+                    if what_is_wrong in ("None", ""):
+                        what_is_wrong = f"Warning: Wrong move! Operator is {detected_activity}. This is not part of the procedure."
+
+                # Procedural error protection: NEVER reset ongoing step to 0 when an anomaly occurs
+                if anomaly_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY") and candidate_step > 0:
+                    if step_val == 0:
+                        step_val = candidate_step
+                        step_name = candidate_name
+
                 # Extra check: if VLM says step is future compared to candidate step
                 if step_val > candidate_step + 1 and anomaly_verdict == "NOMINAL":
                     anomaly_verdict = "PROCEDURAL_ERROR"
@@ -325,6 +388,7 @@ Reply strictly in valid JSON format:
                 return {
                     "verified_step": step_val,
                     "step_name": step_name,
+                    "detected_activity": detected_activity,
                     "confidence": float(parsed.get("confidence", 0.92)),
                     "anomaly_verdict": anomaly_verdict,
                     "what_is_wrong": what_is_wrong,
@@ -337,7 +401,8 @@ Reply strictly in valid JSON format:
 
         except Exception:
             return self._fallback_deterministic_verification(
-                candidate_step, candidate_name, avg_lid, inside_ratio, recent_activities, recent["anomaly"]
+                candidate_step, candidate_name, avg_lid, inside_ratio, recent_activities, recent["anomaly"],
+                current_activity=recent.get("activity", "IDLE")
             )
 
     def _fallback_deterministic_verification(
@@ -347,7 +412,8 @@ Reply strictly in valid JSON format:
         avg_lid: float,
         inside_ratio: float,
         recent_activities: List[str],
-        anomaly_flag: str
+        anomaly_flag: str,
+        current_activity: str = "IDLE"
     ) -> Dict[str, Any]:
         """Provides verified fallback consensus if Ollama is momentarily busy."""
         verified = candidate_step
@@ -355,22 +421,26 @@ Reply strictly in valid JSON format:
         anomaly_verdict = "NOMINAL"
         what_is_wrong = "None"
         corrective_action = "Continue nominal procedure."
+        detected_act = current_activity
 
-        if anomaly_flag != "NONE":
+        procedural_stems = (
+            "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
+            "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
+            "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY", "NONE"
+        )
+        is_proc = any(stem in current_activity.upper() for stem in procedural_stems)
+
+        if not is_proc and current_activity.upper() not in ("IDLE", "OBSERVING", "STANDBY", ""):
             anomaly_verdict = "PROCEDURAL_ERROR"
-            if "SKIP" in anomaly_flag or "PREMATURE" in anomaly_flag:
-                what_is_wrong = "Warning: Wrong move! Step skipped or container closed prematurely."
-                corrective_action = "Reopen the container lid and complete the step."
-            elif "SEQ" in anomaly_flag:
-                what_is_wrong = "Warning: Wrong move! Action performed out of procedural sequence."
-                corrective_action = "Follow the standard procedure sequence."
-            else:
-                what_is_wrong = f"Warning: Wrong move! Detected anomaly: {anomaly_flag}"
-                corrective_action = "Check procedure checklist."
+            detected_act = current_activity.upper()
+            what_is_wrong = f"Warning: Wrong move! {detected_act} detected during active procedure."
+            corrective_action = f"Please cease {detected_act} and proceed with {candidate_name}."
+            reason = f"Operator is performing {detected_act} instead of procedural task."
 
         return {
             "verified_step": verified,
             "step_name": self.step_names.get(verified, candidate_name),
+            "detected_activity": detected_act,
             "confidence": 0.88,
             "anomaly_verdict": anomaly_verdict,
             "what_is_wrong": what_is_wrong,

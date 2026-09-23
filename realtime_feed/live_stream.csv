@@ -1,0 +1,26 @@
+frame_id,timestamp_sec,timestamp_iso,fps,step_id,step_name,activity,instruction,lid_angle_deg,lid_state,component_state,component_is_inside,llm_verified_step,llm_verified_name,llm_confidence,llm_reason
+1,2.5,2026-09-23T08:36:52.742846Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,7.0,CLOSED,DOCKED,1,0,IDLE,1.0,Deterministic validation consensus.
+2,2.594,2026-09-23T08:36:52.836983Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,12.2,CLOSED,DOCKED,1,0,IDLE,1.0,Deterministic validation consensus.
+3,2.684,2026-09-23T08:36:52.926775Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,16.2,CLOSED,APPROACHED,1,0,IDLE,1.0,Deterministic validation consensus.
+4,2.772,2026-09-23T08:36:53.014612Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,19.1,CLOSED,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+5,2.861,2026-09-23T08:36:53.103308Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,21.4,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+6,2.948,2026-09-23T08:36:53.191027Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,23.0,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+7,3.03,2026-09-23T08:36:53.272705Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,24.3,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+8,3.109,2026-09-23T08:36:53.352155Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,25.2,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+9,3.198,2026-09-23T08:36:53.440445Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,25.9,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+10,3.288,2026-09-23T08:36:53.530284Z,30.0,0,IDLE,IDLE,System initialized. Please open the box.,26.4,OPEN,GRASPED,1,0,IDLE,1.0,Deterministic validation consensus.
+11,3.385,2026-09-23T08:36:53.627889Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,26.8,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+12,3.471,2026-09-23T08:36:53.713932Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.1,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+13,3.556,2026-09-23T08:36:53.798748Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.3,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+14,3.644,2026-09-23T08:36:53.886978Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.5,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+15,3.731,2026-09-23T08:36:53.973889Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.6,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+16,3.854,2026-09-23T08:36:54.096625Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.7,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+17,3.947,2026-09-23T08:36:54.189904Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.8,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+18,4.043,2026-09-23T08:36:54.286119Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,27.8,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+19,4.142,2026-09-23T08:36:54.384746Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,28.2,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+20,4.235,2026-09-23T08:36:54.477710Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,28.7,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+21,4.329,2026-09-23T08:36:54.571723Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,29.2,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+22,4.479,2026-09-23T08:36:54.721809Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,29.9,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+23,4.589,2026-09-23T08:36:54.831280Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,30.6,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+24,4.756,2026-09-23T08:36:54.998711Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,31.5,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.
+25,4.873,2026-09-23T08:36:55.116137Z,30.0,1,BOX_OPENED,IDLE,Box opened. Next step: Please take out the object.,32.6,OPEN,GRASPED,1,1,BOX_OPENED,1.0,Deterministic validation consensus.

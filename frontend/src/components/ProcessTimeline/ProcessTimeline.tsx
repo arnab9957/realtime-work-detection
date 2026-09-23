@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Activity } from 'lucide-react';
-import { PROCESS_STEPS, STEP_LABELS } from '../../mock/fallbackData';
+import { RED_YELLOW_STEPS, BOX_RETURN_STEPS, STEP_LABELS, type ProcessStep } from '../../mock/fallbackData';
 import type { TelemetryData } from '../../types/api';
 
 interface ProcessTimelineProps {
@@ -10,9 +10,17 @@ interface ProcessTimelineProps {
 export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Map step_name to a PROCESS_STEPS index
-  const activeIdx = resolveActiveStep(telemetry.step_name, telemetry.step);
+  // Select procedure steps based on active experiment protocol
+  const steps: ProcessStep[] =
+    telemetry.experiment_id && telemetry.experiment_id.includes('BOX-RETURN')
+      ? BOX_RETURN_STEPS
+      : RED_YELLOW_STEPS;
+
+  // Map step integer & step_name to the correct process steps index
+  const activeIdx = resolveActiveStep(steps, telemetry.step_name, telemetry.step);
+  const maxStepIdx = steps.length - 1;
   const isComplete =
+    telemetry.step >= maxStepIdx ||
     telemetry.step_name === 'COMPLETE' ||
     telemetry.step_name === 'BOX_CLOSED' ||
     telemetry.step_name === 'DUAL_COMPLETE';
@@ -41,7 +49,7 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
 
       <div className="timeline-scroll-wrapper" ref={containerRef}>
         <div className="timeline-track">
-          {PROCESS_STEPS.map((step, idx) => {
+          {steps.map((step, idx) => {
             const completed = isComplete || idx < activeIdx;
             const active = !isComplete && idx === activeIdx;
             const upcoming = !isComplete && idx > activeIdx;
@@ -84,11 +92,16 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
   );
 }
 
-/** Map backend step_name → PROCESS_STEPS index */
-function resolveActiveStep(stepName: string, stepIdx: number): number {
-  // Direct key match in PROCESS_STEPS
-  const directIdx = PROCESS_STEPS.findIndex(s => s.key === stepName);
+/** Map backend step integer & step_name → steps index */
+function resolveActiveStep(steps: ProcessStep[], stepName: string, stepIdx: number): number {
+  // If valid integer step provided by FSM (0 .. steps.length - 1), it is the canonical ground truth
+  if (typeof stepIdx === 'number' && stepIdx >= 0 && stepIdx < steps.length) {
+    return stepIdx;
+  }
+  // Fallback to key or alias match
+  const directIdx = steps.findIndex(
+    s => s.key === stepName || (s.aliases && s.aliases.includes(stepName))
+  );
   if (directIdx >= 0) return directIdx;
-  // Fallback to FSM step integer clamped to array bounds
-  return Math.min(Math.max(stepIdx, 0), PROCESS_STEPS.length - 1);
+  return Math.min(Math.max(stepIdx || 0, 0), steps.length - 1);
 }

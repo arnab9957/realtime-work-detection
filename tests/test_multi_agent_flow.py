@@ -29,7 +29,7 @@ from src.agents.monitoring_agent import MonitoringAgent
 class TestMultiAgentFlow(unittest.TestCase):
 
     def test_full_agent_loop_execution(self):
-        video_path = os.path.join(WORKSPACE_ROOT, "clip1.mp4")
+        video_path = os.path.join(WORKSPACE_ROOT, "clip1.mp4") if os.path.exists(os.path.join(WORKSPACE_ROOT, "clip1.mp4")) else os.path.join(WORKSPACE_ROOT, "c1.mp4")
         self.assertTrue(os.path.exists(video_path), f"Test video missing: {video_path}")
 
         cap = cv2.VideoCapture(video_path)

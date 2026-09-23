@@ -84,27 +84,49 @@ export const STEP_LABELS: Record<string, string> = {
   APPROACH: 'Man approaching the box container',
   HOLD_CONTAINER: 'Man holding the box container',
   OPEN_BOX: 'Man opening the box container',
+  CONTAINER_OPEN: 'Man opening the box container',
+  BOX_OPENED: 'Man opening the box container',
+  RED_EXTRACTED: 'Man taking out red box from container',
+  OBJECT_EXTRACTED: 'Man taking out object from container',
   TAKE_OUT_OBJECT: 'Man taking out red box from container',
-  RETURN_OBJECT: 'Man returning red box into container',
+  YELLOW_EXTRACTED: 'Man taking out yellow box from container',
   TAKE_OUT_YELLOW: 'Man taking out yellow box from container',
+  OBJECTS_RETURNED: 'Man returning yellow and red boxes into container',
+  RETURN_OBJECT: 'Man returning box into container',
   RETURN_YELLOW: 'Man returning yellow box into container',
   BOX_CLOSED: 'Man closing the box container',
   COMPLETE: 'Man standing — procedure complete',
   DUAL_COMPLETE: 'Dual experiment procedure complete',
 };
 
-// Ordered process steps for the timeline display
-export const PROCESS_STEPS = [
-  { key: 'IDLE',           label: 'At Standby',        shortLabel: 'Standby' },
-  { key: 'HOLD_CONTAINER', label: 'Holding Container', shortLabel: 'Hold Container' },
-  { key: 'OPEN_BOX',       label: 'Opening Container', shortLabel: 'Open Box' },
-  { key: 'TAKE_OUT_OBJECT',label: 'Extract Red Box',   shortLabel: 'Extract Red' },
-  { key: 'RETURN_OBJECT',  label: 'Return Red Box',    shortLabel: 'Return Red' },
-  { key: 'TAKE_OUT_YELLOW',label: 'Extract Yellow Box',shortLabel: 'Extract Yellow' },
-  { key: 'RETURN_YELLOW',  label: 'Return Yellow Box', shortLabel: 'Return Yellow' },
-  { key: 'BOX_CLOSED',     label: 'Close Container',   shortLabel: 'Close Box' },
-  { key: 'COMPLETE',       label: 'Procedure Complete',shortLabel: 'Complete' },
+export interface ProcessStep {
+  key: string;
+  aliases?: string[];
+  label: string;
+  shortLabel: string;
+}
+
+// Dual-box procedure (ISRO Red-Yellow / BAS-EXP-26174 / BAS-EXP-RED-YELLOW)
+export const RED_YELLOW_STEPS: ProcessStep[] = [
+  { key: 'IDLE', aliases: ['STANDBY'], label: 'Standby / Box Closed', shortLabel: 'Standby' },
+  { key: 'CONTAINER_OPEN', aliases: ['BOX_OPENED', 'OPEN_BOX'], label: 'Opening Container Box', shortLabel: 'Open Box' },
+  { key: 'RED_EXTRACTED', aliases: ['OBJECT_EXTRACTED', 'TAKE_OUT_OBJECT'], label: 'Extract Red Box First', shortLabel: 'Extract Red' },
+  { key: 'YELLOW_EXTRACTED', aliases: ['TAKE_OUT_YELLOW'], label: 'Extract Yellow Box Second', shortLabel: 'Extract Yellow' },
+  { key: 'OBJECTS_RETURNED', aliases: ['RETURN_OBJECT', 'RETURN_YELLOW'], label: 'Return Yellow & Red Boxes', shortLabel: 'Return Boxes' },
+  { key: 'COMPLETE', aliases: ['BOX_CLOSED', 'DUAL_COMPLETE'], label: 'Close Box & Complete', shortLabel: 'Complete' },
 ];
+
+// Single-box procedure (BAS-EXP-BOX-RETURN)
+export const BOX_RETURN_STEPS: ProcessStep[] = [
+  { key: 'IDLE', aliases: ['STANDBY'], label: 'Initialize Workspace', shortLabel: 'Standby' },
+  { key: 'BOX_OPENED', aliases: ['CONTAINER_OPEN', 'OPEN_BOX'], label: 'Opening Box', shortLabel: 'Open Box' },
+  { key: 'OBJECT_EXTRACTED', aliases: ['RED_EXTRACTED', 'TAKE_OUT_OBJECT'], label: 'Take Out Object', shortLabel: 'Extract Object' },
+  { key: 'OBJECT_RETURNED', aliases: ['RETURN_OBJECT'], label: 'Return Object into Box', shortLabel: 'Return Object' },
+  { key: 'COMPLETE', aliases: ['BOX_CLOSED'], label: 'Close Box & Complete', shortLabel: 'Complete' },
+];
+
+// Default ordered process steps for the timeline display
+export const PROCESS_STEPS = RED_YELLOW_STEPS;
 
 // Simulated system resource metrics (frontend-only; backend doesn't expose these)
 export function getSimulatedSystemMetrics() {

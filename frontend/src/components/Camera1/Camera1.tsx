@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Layers, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { STEP_LABELS } from '../../mock/fallbackData';
+import { STEP_LABELS, RED_YELLOW_STEPS } from '../../mock/fallbackData';
 import { API } from '../../services/api';
 import type { TelemetryData } from '../../types/api';
 
@@ -157,13 +157,13 @@ function InfoBlock({
   );
 }
 
-function resolvePrevStepLabel(currentStepName: string, stepIdx: number): string {
-  const keys = Object.keys(STEP_LABELS);
-  const currentIdx = keys.indexOf(currentStepName);
-  if (currentIdx > 0) {
-    const prevKey = keys[currentIdx - 1];
-    return STEP_LABELS[prevKey] || `Step ${stepIdx - 1}`;
+function resolvePrevStepLabel(_currentStepName: string, stepIdx: number): string {
+  if (stepIdx <= 0) return '—';
+  const prevStepIdx = stepIdx - 1;
+  const steps = RED_YELLOW_STEPS;
+  if (prevStepIdx >= 0 && prevStepIdx < steps.length) {
+    const prevKey = steps[prevStepIdx].key;
+    return STEP_LABELS[prevKey] || steps[prevStepIdx].label || `Step ${prevStepIdx}`;
   }
-  if (stepIdx > 0) return `Step ${stepIdx - 1}`;
-  return '—';
+  return `Step ${prevStepIdx}`;
 }
