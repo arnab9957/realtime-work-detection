@@ -41,6 +41,10 @@ class HARAgent:
         self.non_proc_frames: int = 0
         self.active_non_proc_act: Optional[str] = None
 
+        # Temporal action sequence buffer (sliding window for sequence classifier)
+        self.action_history: List[Dict[str, Any]] = []
+        self.action_history_max: int = 30  # ~1 second @ 30fps
+
     def reset(self):
         """Resets all HOI contact counters for a new test cycle."""
         for k in self.contact_frame_counters:
@@ -52,13 +56,14 @@ class HARAgent:
         self.dance_frames = 0
         self.non_proc_frames = 0
         self.active_non_proc_act = None
+        self.action_history.clear()
 
     def evaluate_interactions(
         self,
         pose: AstronautPose3D,
         objects: Dict[str, ExperimentObject],
         lid_angle: float,
-        spatial_metrics: SpatialMetrics
+        spatial_metrics: Optional[SpatialMetrics] = None
     ) -> Tuple[List[HOIInteraction], Dict[str, ExperimentObject], str]:
         """
         Evaluates 3D spatial kinematics and interactions between astronaut hand and experimental items.
@@ -92,7 +97,10 @@ class HARAgent:
             if not obj:
                 continue
 
-            dist = spatial_metrics.distance_to_components_m.get(obj_name, 999.0)
+            if spatial_metrics:
+                dist = spatial_metrics.distance_to_components_m.get(obj_name, 999.0)
+            else:
+                dist = wrist_pos.distance_to(obj.pos_rack)
             if obj_name not in self.contact_frame_counters:
                 self.contact_frame_counters[obj_name] = 0
 
@@ -171,8 +179,17 @@ class HARAgent:
             if lid_angle >= 15.0 and abs(delta_lid) > 0.6:
                 primary_activity = "OPENING CONTAINER" if delta_lid > 0 else "CLOSING CONTAINER"
             elif cont:
-                cont_dist = spatial_metrics.distance_to_container_m
-                wrist_in_container = spatial_metrics.wrist_in_container_2d
+                if spatial_metrics:
+                    cont_dist = spatial_metrics.distance_to_container_m
+                    wrist_in_container = spatial_metrics.wrist_in_container_2d
+                else:
+                    cont_dist = wrist_pos.distance_to(cont.pos_rack)
+                    wrist_in_container = False
+                    if cont.bbox and pose.keypoints_2d.get("right_wrist"):
+                        wx, wy, _ = pose.keypoints_2d["right_wrist"]
+                        if (cont.bbox.xmin <= wx <= cont.bbox.xmax and 
+                            cont.bbox.ymin <= wy <= cont.bbox.ymax):
+                            wrist_in_container = True
 
                 if wrist_in_container or cont_dist <= self.contact_threshold_m:
                     primary_activity = "REACHING INTO BOX" if lid_angle >= 15.0 else "CONTACTING CONTAINER"

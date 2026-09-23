@@ -215,6 +215,7 @@ class RealtimeLLMVerifier:
         candidate_name = recent["step_name"]
         detected_str = ", ".join(detected_objects) if detected_objects else "None"
         spatial_str = "\n".join([f"  - {rel}" for rel in recent.get("spatial_relations", [])]) if recent.get("spatial_relations") else "  - None"
+        recent_relations = spatial_str
 
         is_ry = "red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id
         if is_ry:

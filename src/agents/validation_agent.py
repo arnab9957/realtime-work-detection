@@ -150,7 +150,10 @@ class ValidationAgent:
         lid_angle: float,
         active_hoi: list,
         current_frame: int,
-        llm_verification: Optional[Dict[str, Any]] = None
+        llm_verification: Optional[Dict[str, Any]] = None,
+        action_history: Optional[List[Dict[str, Any]]] = None,
+        astronaut_pose: Optional[AstronautPose3D] = None,
+        current_activity: Optional[str] = None
     ) -> Tuple[FSMStep, int, AnomalyType, str, Optional[str]]:
         """
         Evaluates current physical state against procedural state machine with Local LLM consensus.
@@ -304,7 +307,7 @@ class ValidationAgent:
             # Step 0: IDLE -> Awaiting Container Opening
             if self.current_step == FSMStep.IDLE:
                 is_opening = (
-                    lid_angle >= 40.0
+                    lid_angle >= 18.0
                     or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.75 and lid_angle >= 14.0)
                 )
                 if is_opening:
@@ -547,23 +550,18 @@ class ValidationAgent:
 
                 returned = (found_target and all_inside)
                 if returned:
-                    # Require that the astronaut has let go of the object to consider it fully returned
-                    is_grasped = any(h.action in (HOIAction.GRASP, HOIAction.CONTACT) for h in active_hoi)
-                    if not is_grasped:
-                        self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
-                        if self.debounce_counter >= self.debounce_required:
-                            self.current_step = FSMStep.OBJECT_RETURNED
-                            self.candidate_step = None
-                            self.debounce_counter = 0
-                            self.step_start_time = now
-                            self.anomaly_status = AnomalyType.NONE
-                            self.anomaly_message = ""
-                            self.anomaly_debounce_counter = 0
-                            self.is_step_correct = True
-                            self.step_verdict = "STEP OK: Nominal Procedure"
-                            transition_committed = "OBJECT_RETURNED"
-                    else:
-                        self._reset_debounce()
+                    self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.OBJECT_RETURNED
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        self.anomaly_status = AnomalyType.NONE
+                        self.anomaly_message = ""
+                        self.anomaly_debounce_counter = 0
+                        self.is_step_correct = True
+                        self.step_verdict = "STEP OK: Nominal Procedure"
+                        transition_committed = "OBJECT_RETURNED"
                 else:
                     self._reset_debounce()
 

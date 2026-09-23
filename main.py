@@ -544,7 +544,11 @@ def run_orchestrator(
 
             # AGENT 6: Validation Agent (Deterministic FSM + Adaptive Debounce + Local LLM Consensus)
             step, deb_count, anomaly, anomaly_msg, trans_event = agent_validation.evaluate_step(
-                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif
+                objects_state, lid_angle, active_hoi, frame_id,
+                llm_verification=llm_verif,
+                action_history=agent_har.action_history,
+                astronaut_pose=fused_pose,
+                current_activity=current_activity
             )
 
             # Preserve ongoing procedural step and reflect any detected non-procedural activity across attributes

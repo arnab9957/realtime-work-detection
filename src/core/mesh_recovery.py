@@ -96,6 +96,8 @@ def start_async_mesh_recovery(video_path: str, output_dir: str = "experiments/me
         render_results_video(sess, preds, out_dir=output_dir, tmp_dir=tmp_dir)
         
         print(f"[Mesh Recovery] Successfully generated 3D meshes and video overlay in {output_dir}")
+    except (ImportError, ModuleNotFoundError) as ie:
+        print(f"[Mesh Recovery] Notice: Multi-HMR2 3D mesh dependencies not installed ({ie}). Skipping 3D mesh recovery.")
     except Exception as e:
         import traceback
         traceback.print_exc()
