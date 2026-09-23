@@ -1,68 +1,117 @@
 {
-  "experiment_id": "BAS-EXP-26174",
-  "name": "Containment Box Extraction Procedure",
-  "description": "Astronaut extracts red box followed by yellow box from the primary containment rack",
-  "debounce_frames": 15,
-  "fps": 30.0,
-  "contact_threshold_m": 0.10,
-  "lid_open_angle_deg": 45.0,
-  "states": {
-    "0": {
-      "name": "IDLE",
-      "instruction": "System initialized. Please open the primary container box.",
-      "expected_next_event": "LID_OPENED",
-      "allowed_transitions": [1]
+    "experiment_id": "BAS-EXP-26174",
+    "name": "Containment Box Extraction Procedure",
+    "description": "Astronaut extracts red box followed by yellow box from the primary containment rack",
+    "debounce_frames": 15,
+    "fps": 30.0,
+    "contact_threshold_m": 0.1,
+    "lid_open_angle_deg": 45.0,
+    "states": {
+        "0": {
+            "name": "IDLE",
+            "instruction": "System initialized. Please open the primary container box.",
+            "expected_next_event": "LID_OPENED",
+            "allowed_transitions": [
+                1
+            ],
+            "timeout_seconds": null
+        },
+        "1": {
+            "name": "CONTAINER_OPEN",
+            "instruction": "Container open. Next step: Please extract the red box.",
+            "expected_next_event": "RED_BOX_EXTRACTED",
+            "allowed_transitions": [
+                2
+            ],
+            "forbidden_events": [
+                "YELLOW_BOX_EXTRACTED",
+                "YELLOW_BOX_TOUCHED"
+            ],
+            "timeout_seconds": 300,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 180,
+                "max_shoulder_angle_deg": 180,
+                "rom_violation_allowed": true
+            }
+        },
+        "2": {
+            "name": "RED_EXTRACTED",
+            "instruction": "Red box extracted. Next step: Please extract the yellow box.",
+            "expected_next_event": "YELLOW_BOX_EXTRACTED",
+            "allowed_transitions": [
+                3
+            ],
+            "forbidden_events": [
+                "LID_CLOSED",
+                "CONTAINER_ABANDONED"
+            ],
+            "timeout_seconds": 300,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 180,
+                "max_shoulder_angle_deg": 180,
+                "rom_violation_allowed": true
+            }
+        },
+        "3": {
+            "name": "YELLOW_EXTRACTED",
+            "instruction": "Yellow box extracted. Next step: Please return both yellow and red boxes into the container.",
+            "expected_next_event": "OBJECTS_RETURNED",
+            "allowed_transitions": [
+                4
+            ],
+            "forbidden_events": [
+                "BOX_CLOSED"
+            ],
+            "timeout_seconds": 300,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 180,
+                "max_shoulder_angle_deg": 180,
+                "rom_violation_allowed": true
+            }
+        },
+        "4": {
+            "name": "OBJECTS_RETURNED",
+            "instruction": "Yellow and red boxes returned. Next step: Please close the container box.",
+            "expected_next_event": "BOX_CLOSED",
+            "allowed_transitions": [
+                5
+            ],
+            "timeout_seconds": 300
+        },
+        "5": {
+            "name": "COMPLETE",
+            "instruction": "Container box closed. Experiment successfully completed.",
+            "expected_next_event": null,
+            "allowed_transitions": [],
+            "timeout_seconds": null
+        }
     },
-    "1": {
-      "name": "CONTAINER_OPEN",
-      "instruction": "Container open. Next step: Please extract the red box.",
-      "expected_next_event": "RED_BOX_EXTRACTED",
-      "allowed_transitions": [2],
-      "forbidden_events": ["YELLOW_BOX_EXTRACTED", "YELLOW_BOX_TOUCHED"]
-    },
-    "2": {
-      "name": "RED_EXTRACTED",
-      "instruction": "Red box extracted. Next step: Please extract the yellow box.",
-      "expected_next_event": "YELLOW_BOX_EXTRACTED",
-      "allowed_transitions": [3],
-      "forbidden_events": ["LID_CLOSED", "CONTAINER_ABANDONED"]
-    },
-    "3": {
-      "name": "YELLOW_EXTRACTED",
-      "instruction": "Yellow box extracted. Next step: Please return both yellow and red boxes into the container.",
-      "expected_next_event": "OBJECTS_RETURNED",
-      "allowed_transitions": [4],
-      "forbidden_events": ["BOX_CLOSED"]
-    },
-    "4": {
-      "name": "OBJECTS_RETURNED",
-      "instruction": "Yellow and red boxes returned. Next step: Please close the container box.",
-      "expected_next_event": "BOX_CLOSED",
-      "allowed_transitions": [5]
-    },
-    "5": {
-      "name": "COMPLETE",
-      "instruction": "Container box closed. Experiment successfully completed.",
-      "expected_next_event": null,
-      "allowed_transitions": []
+    "anomalies": {
+        "ERROR_SEQ": {
+            "code": "ERR_01_OUT_OF_SEQUENCE",
+            "alert_tts": "Warning: Procedural error. Red box must be extracted before yellow box.",
+            "recovery_prompt": "Please return the yellow box into the container and proceed with extracting the red box."
+        },
+        "ERROR_SKIP": {
+            "code": "ERR_02_STEP_SKIPPED",
+            "alert_tts": "Warning: Step skipped. Please extract the yellow box to complete the procedure.",
+            "recovery_prompt": "Please reopen the container and extract the remaining yellow box."
+        },
+        "STALL_TIMEOUT": {
+            "code": "WARN_03_INACTIVITY",
+            "timeout_seconds": 60,
+            "alert_tts": "Notice: Activity paused. Please consult mission checklist for active step.",
+            "recovery_prompt": "Resume current step when ready."
+        },
+        "ERROR_REGRESSION": {
+            "code": "ERR_04_STEP_REGRESSION",
+            "alert_tts": "Warning: Wrong move! A completed step has been undone. Please redo the step.",
+            "recovery_prompt": "Please redo the reverted step to continue the procedure."
+        },
+        "ERROR_TECHNIQUE": {
+            "code": "ERR_05_UNSAFE_TECHNIQUE",
+            "alert_tts": "Warning: Unsafe technique detected. Please adjust your posture.",
+            "recovery_prompt": "Adjust your arm angles and posture before continuing."
+        }
     }
-  },
-  "anomalies": {
-    "ERROR_SEQ": {
-      "code": "ERR_01_OUT_OF_SEQUENCE",
-      "alert_tts": "Warning: Procedural error. Red box must be extracted before yellow box.",
-      "recovery_prompt": "Please return the yellow box into the container and proceed with extracting the red box."
-    },
-    "ERROR_SKIP": {
-      "code": "ERR_02_STEP_SKIPPED",
-      "alert_tts": "Warning: Step skipped. Please extract the yellow box to complete the procedure.",
-      "recovery_prompt": "Please reopen the container and extract the remaining yellow box."
-    },
-    "STALL_TIMEOUT": {
-      "code": "WARN_03_INACTIVITY",
-      "timeout_seconds": 60,
-      "alert_tts": "Notice: Activity paused. Please consult mission checklist for active step.",
-      "recovery_prompt": "Resume current step when ready."
-    }
-  }
 }

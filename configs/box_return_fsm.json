@@ -1,69 +1,106 @@
 {
-  "experiment_id": "BAS-EXP-BOX-RETURN",
-  "name": "Box Object Extraction & Return Procedure",
-  "description": "Astronaut opens the containment box, extracts one object, returns the object into the box, and closes the box.",
-  "debounce_frames": 6,
-  "fps": 30.0,
-  "states": {
-    "0": {
-      "name": "IDLE",
-      "instruction": "System initialized. Please open the box.",
-      "expected_next_event": "BOX_OPENED",
-      "allowed_transitions": [1]
+    "experiment_id": "BAS-EXP-BOX-RETURN",
+    "name": "Box Object Extraction & Return Procedure",
+    "description": "Astronaut opens the containment box, extracts one object, returns the object into the box, and closes the box.",
+    "debounce_frames": 6,
+    "fps": 30.0,
+    "states": {
+        "0": {
+            "name": "IDLE",
+            "instruction": "System initialized. Please open the box.",
+            "expected_next_event": "BOX_OPENED",
+            "allowed_transitions": [
+                1
+            ],
+            "timeout_seconds": null
+        },
+        "1": {
+            "name": "BOX_OPENED",
+            "instruction": "Box opened. Next step: Please take out the object.",
+            "expected_next_event": "OBJECT_EXTRACTED",
+            "allowed_transitions": [
+                2
+            ],
+            "forbidden_events": [
+                "BOX_CLOSED"
+            ],
+            "timeout_seconds": 300,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 180,
+                "max_shoulder_angle_deg": 180,
+                "rom_violation_allowed": true
+            }
+        },
+        "2": {
+            "name": "OBJECT_EXTRACTED",
+            "instruction": "Object extracted. Next step: Please return the object into the box.",
+            "expected_next_event": "OBJECT_RETURNED",
+            "allowed_transitions": [
+                3
+            ],
+            "forbidden_events": [
+                "BOX_CLOSED"
+            ],
+            "timeout_seconds": 300,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 180,
+                "max_shoulder_angle_deg": 180,
+                "rom_violation_allowed": true
+            }
+        },
+        "3": {
+            "name": "OBJECT_RETURNED",
+            "instruction": "Object returned. Next step: Please close the box.",
+            "expected_next_event": "BOX_CLOSED",
+            "allowed_transitions": [
+                4
+            ],
+            "timeout_seconds": 300
+        },
+        "4": {
+            "name": "COMPLETE",
+            "instruction": "Box closed. Experiment successfully completed.",
+            "expected_next_event": null,
+            "allowed_transitions": [],
+            "timeout_seconds": null
+        }
     },
-    "1": {
-      "name": "BOX_OPENED",
-      "instruction": "Box opened. Next step: Please take out the object.",
-      "expected_next_event": "OBJECT_EXTRACTED",
-      "allowed_transitions": [2],
-      "forbidden_events": ["BOX_CLOSED"]
-    },
-    "2": {
-      "name": "OBJECT_EXTRACTED",
-      "instruction": "Object extracted. Next step: Please return the object into the box.",
-      "expected_next_event": "OBJECT_RETURNED",
-      "allowed_transitions": [3],
-      "forbidden_events": ["BOX_CLOSED"]
-    },
-    "3": {
-      "name": "OBJECT_RETURNED",
-      "instruction": "Object returned. Next step: Please close the box.",
-      "expected_next_event": "BOX_CLOSED",
-      "allowed_transitions": [4]
-    },
-    "4": {
-      "name": "COMPLETE",
-      "instruction": "Box closed. Experiment successfully completed.",
-      "expected_next_event": null,
-      "allowed_transitions": []
+    "anomalies": {
+        "ERROR_SKIP": {
+            "code": "ERR_01_PREMATURE_CLOSE",
+            "alert_tts": "Warning: Wrong move! Step skipped. Please extract and return the object before closing the box.",
+            "recovery_prompt": "Reopen the box and complete the object extraction and return sequence."
+        },
+        "ERROR_SEQ": {
+            "code": "ERR_02_OBJECT_NOT_RETURNED",
+            "alert_tts": "Warning: Wrong move! Procedural error. The object has not been returned to the box.",
+            "recovery_prompt": "Reopen the box and return the object inside before closing."
+        },
+        "ERROR_PREMATURE_CLOSE": {
+            "code": "ERR_01_PREMATURE_CLOSE",
+            "alert_tts": "Warning: Wrong move! Step skipped. Please extract and return the object before closing the box.",
+            "recovery_prompt": "Reopen the box and complete the object extraction and return sequence."
+        },
+        "ERROR_UNRETURNED_CLOSE": {
+            "code": "ERR_02_OBJECT_NOT_RETURNED",
+            "alert_tts": "Warning: Wrong move! Procedural error. The object has not been returned to the box.",
+            "recovery_prompt": "Reopen the box and return the object inside before closing."
+        },
+        "STALL_TIMEOUT": {
+            "code": "WARN_03_INACTIVITY",
+            "timeout_seconds": 45,
+            "alert_tts": "Notice: Inactivity detected. Please proceed with the current step.",
+            "recovery_prompt": "Continue with the active procedure step."
+        },
+        "ERROR_REGRESSION": {
+            "code": "ERR_04_STEP_REGRESSION",
+            "alert_tts": "Warning: Wrong move! A completed step has been undone. Please redo the step.",
+            "recovery_prompt": "Please redo the reverted step to continue the procedure."
+        },
+        "ERROR_TECHNIQUE": {
+            "code": "ERR_05_UNSAFE_TECHNIQUE",
+            "alert_tts": "Warning: Unsafe technique detected. Please adjust your posture.",
+            "recovery_prompt": "Adjust your arm angles and posture before continuing."
+        }
     }
-  },
-  "anomalies": {
-    "ERROR_SKIP": {
-      "code": "ERR_01_PREMATURE_CLOSE",
-      "alert_tts": "Warning: Wrong move! Step skipped. Please extract and return the object before closing the box.",
-      "recovery_prompt": "Reopen the box and complete the object extraction and return sequence."
-    },
-    "ERROR_SEQ": {
-      "code": "ERR_02_OBJECT_NOT_RETURNED",
-      "alert_tts": "Warning: Wrong move! Procedural error. The object has not been returned to the box.",
-      "recovery_prompt": "Reopen the box and return the object inside before closing."
-    },
-    "ERROR_PREMATURE_CLOSE": {
-      "code": "ERR_01_PREMATURE_CLOSE",
-      "alert_tts": "Warning: Wrong move! Step skipped. Please extract and return the object before closing the box.",
-      "recovery_prompt": "Reopen the box and complete the object extraction and return sequence."
-    },
-    "ERROR_UNRETURNED_CLOSE": {
-      "code": "ERR_02_OBJECT_NOT_RETURNED",
-      "alert_tts": "Warning: Wrong move! Procedural error. The object has not been returned to the box.",
-      "recovery_prompt": "Reopen the box and return the object inside before closing."
-    },
-    "STALL_TIMEOUT": {
-      "code": "WARN_03_INACTIVITY",
-      "timeout_seconds": 45,
-      "alert_tts": "Notice: Inactivity detected. Please proceed with the current step.",
-      "recovery_prompt": "Continue with the active procedure step."
-    }
-  }
 }

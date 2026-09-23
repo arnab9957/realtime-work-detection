@@ -16,7 +16,7 @@ import random
 import numpy as np
 
 # Ensure workspace root in sys.path
-WORKSPACE_ROOT = r"e:\SIH"
+WORKSPACE_ROOT = r"e:\BAS\realtime-work-detection"
 if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
 
@@ -25,7 +25,9 @@ from ultralytics import YOLO
 
 def find_colored_box(hsv, lower1, upper1, lower2=None, upper2=None, min_area=1200, roi=None):
     m1 = cv2.inRange(hsv, lower1, upper1)
-    mask = m1 if lower2 is None else cv2.bitwise_or(m1, cv2.inRange(hsv, lower2, upper2))
+    mask = m1
+    if lower2 is not None and upper2 is not None:
+        mask = cv2.bitwise_or(m1, cv2.inRange(hsv, lower2, upper2))
     if roi:
         rx1, ry1, rx2, ry2 = roi
         h, w = mask.shape[:2]
@@ -46,9 +48,9 @@ def find_colored_box(hsv, lower1, upper1, lower2=None, upper2=None, min_area=120
 
 
 def main():
-    video_path = os.path.join(WORKSPACE_ROOT, "red_yellow.mp4")
+    video_path = os.path.join(WORKSPACE_ROOT, "clip.mp4")
     out_dir = os.path.join(WORKSPACE_ROOT, "dataset", "red_yellow_dataset")
-    stride = 3
+    stride = 1
     val_ratio = 0.15
 
     for sub in ["images/train", "images/val", "labels/train", "labels/val"]:
@@ -87,16 +89,16 @@ def main():
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
             # 1. Pose Model for Human Body and Hands
-            pose_res = pose_model(frame, verbose=False)[0]
-            if pose_res.boxes:
+            pose_res = list(pose_model(frame, verbose=False))[0]  # type: ignore
+            if getattr(pose_res, 'boxes', None) is not None and pose_res.boxes:  # type: ignore
                 # Largest person box
-                pb = max(pose_res.boxes, key=lambda b: (b.xyxy[0][2]-b.xyxy[0][0])*(b.xyxy[0][3]-b.xyxy[0][1]))
+                pb = max(pose_res.boxes, key=lambda b: (b.xyxy[0][2]-b.xyxy[0][0])*(b.xyxy[0][3]-b.xyxy[0][1]))  # type: ignore
                 px1, py1, px2, py2 = [float(c) for c in pb.xyxy[0].tolist()]
                 boxes.append((5, px1, py1, px2, py2))  # human_body
 
             # Wrists for operator hands
-            if pose_res.keypoints is not None and len(pose_res.keypoints) > 0:
-                kps = pose_res.keypoints[0].data[0].tolist()
+            if getattr(pose_res, 'keypoints', None) is not None and len(pose_res.keypoints) > 0:  # type: ignore
+                kps = pose_res.keypoints[0].data[0].tolist()  # type: ignore
                 for wid in [9, 10]:
                     if wid < len(kps) and kps[wid][2] > 0.3:
                         wx, wy = kps[wid][0], kps[wid][1]
@@ -115,9 +117,17 @@ def main():
                 lid_box = (1, 285, 320, 485, 360)  # container_lid (closed)
                 boxes.append(lid_box)
 
-            # 3. Red Box: Extracted and held from 4.5s to 11.5s, on floor from 11.5s to 20.5s
+            # 3. Red Box: Inside container from 3.5s to 4.5s, extracted 4.5s to 11.5s, on floor 11.5s to 20.5s
             r_box = None
-            if 4.5 <= sec <= 11.5:
+            if 3.5 <= sec < 4.5:
+                # Inside container
+                r_box = find_colored_box(
+                    hsv,
+                    np.array([0, 75, 55]), np.array([12, 255, 255]),
+                    np.array([160, 75, 55]), np.array([180, 255, 255]),
+                    min_area=500, roi=(275, 325, 495, 455)
+                )
+            elif 4.5 <= sec <= 11.5:
                 r_box = find_colored_box(
                     hsv,
                     np.array([0, 75, 55]), np.array([12, 255, 255]),
@@ -134,9 +144,16 @@ def main():
             if r_box:
                 boxes.append((2, r_box[0], r_box[1], r_box[2], r_box[3]))  # red_box
 
-            # 4. Yellow Box: Extracted and held from 11.0s to 17.5s, returned ~17.5s to 21.0s
+            # 4. Yellow Box: Inside container 3.5s to 11.0s, extracted 11.0s to 17.5s, returned 17.5s to 21.0s
             y_box = None
-            if 11.0 <= sec <= 17.5:
+            if 3.5 <= sec < 11.0:
+                # Inside container
+                y_box = find_colored_box(
+                    hsv,
+                    np.array([20, 75, 75]), np.array([36, 255, 255]),
+                    min_area=500, roi=(275, 325, 495, 455)
+                )
+            elif 11.0 <= sec <= 17.5:
                 y_box = find_colored_box(
                     hsv,
                     np.array([20, 75, 75]), np.array([36, 255, 255]),

@@ -24,6 +24,14 @@ import argparse
 import cv2
 import numpy as np
 
+# RelateAnything is now integrated directly
+try:
+    from deploy.postprocess import ThresholdConfig # type: ignore
+    from deploy.runtime import DetectorConfig, ScenePipeline # type: ignore
+except ImportError as e:
+    print(f"CRITICAL: Failed to import ScenePipeline: {e}")
+    ScenePipeline = None
+
 # Core & Blackboard
 from src.core.types import FSMStep, AnomalyType
 from src.core.shared_memory import DigitalTwinBlackboard
@@ -33,8 +41,10 @@ from src.agents.perception_agent import PerceptionAgent
 from src.agents.imu_agent import IMUAgent
 from src.agents.fusion_agent import FusionAgent
 from src.agents.har_agent import HARAgent
+from src.agents.spatial_agent import SpatialAgent
 from src.agents.digital_twin_agent import DigitalTwinAgent
 from src.agents.validation_agent import ValidationAgent
+
 from src.agents.reasoning_agent import ReasoningAgent
 from src.agents.monitoring_agent import MonitoringAgent
 from src.llm.realtime_llm_verifier import RealtimeLLMVerifier
@@ -59,21 +69,23 @@ def run_orchestrator(
     print("   ISRO SIH Problem Statement #26174")
     print("=" * 70)
 
-    if config_path is None:
-        config_path = "configs/red_yellow_fsm.json"
-
     # Detect if source or protocol is the Red-Yellow experiment
     is_red_yellow = (
         "red_yellow" in str(source).lower()
+        or "clip.mp4" in str(source).lower()
         or (config_path is not None and "red_yellow" in str(config_path).lower())
     )
 
     if is_red_yellow:
+        if config_path is None or "box_return" in str(config_path):
+            config_path = "configs/red_yellow_fsm.json"
         if realtime_feed_dir == "realtime_feed":
             realtime_feed_dir = "realtime_feed_red_yellow"
         if output_csv_dir is None:
             output_csv_dir = "experiments_red_yellow"
     else:
+        if config_path is None:
+            config_path = "configs/box_return_fsm.json"
         if output_csv_dir is None:
             output_csv_dir = "experiments"
 
@@ -96,6 +108,7 @@ def run_orchestrator(
     agent_perception = PerceptionAgent()
     agent_imu = IMUAgent()
     agent_fusion = FusionAgent()
+    agent_spatial = SpatialAgent()
     agent_har = HARAgent()
     agent_twin = DigitalTwinAgent(is_dual=is_red_yellow)
     print("[Orchestrator] Engaging Validation Engine...")
@@ -134,6 +147,13 @@ def run_orchestrator(
         except Exception as e:
             print(f"[Orchestrator] Desktop GUI warning: {e}. Falling back to Web/OpenCV mode.")
             show_window = True
+
+    # Spatial relations log file
+    spatial_log_path = os.path.join(output_csv_dir, f"spatial_relations_{time.strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+    print(f"[Orchestrator] Spatial Relations Log: {spatial_log_path}")
+    with open(spatial_log_path, "w") as sf:
+        sf.write("Frame ID | Spatial Relations\n")
+        sf.write("-" * 50 + "\n")
 
     # 3. Setup Video Source (Auto-Probe Live Webcam first for Real-Time Detection)
     source_type = "LIVE_WEBCAM"
@@ -367,15 +387,9 @@ def run_orchestrator(
                             break
                         time.sleep(0.02)
 
-                # Loop video file for continuous exhibition/testing
-                print("\n[Orchestrator] Looping experiment from Step 0...")
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                reset_pipeline()
-                frame_id = 0
-                ret, raw_frame = cap.read()
-                if not ret:
-                    time.sleep(0.033)
-                    continue
+                # Prevent looping to gracefully close the video file and trigger mesh recovery
+                print("\n[Orchestrator] Reached end of video file. Gracefully exiting to finalize processing...")
+                break
 
             frame_id += 1
             if max_frames and frame_id > max_frames:
@@ -394,6 +408,51 @@ def run_orchestrator(
             # AGENT 1: Perception Agent (YOLOv8n + 3D HMR)
             objects_cam, pose_cam, lid_angle = agent_perception.process_frame(raw_frame)
 
+            # Extract Spatial Relations from objects (populated by PerceptionAgent using RelateAnything)
+            spatial_relations = []
+            for obj in objects_cam.values():
+                if getattr(obj, 'relations', None):
+                    for r in obj.relations:
+                        spatial_relations.append(f"[{r.subject_name}] is {r.predicate} [{r.object_name}] (score: {r.score:.2f})")
+
+            # Heuristic spatial relations fallback relative to container
+            if not spatial_relations:
+                cont = objects_cam.get("container_box")
+                if cont and cont.bbox:
+                    for obj_name, obj in objects_cam.items():
+                        if obj_name in ["container_box", "container_lid", "hand", "operator_hand", "human_body", "person", "astronaut"]:
+                            continue
+                        if obj.bbox:
+                            cx, cy = obj.bbox.centroid
+                            if cont.bbox.xmin <= cx <= cont.bbox.xmax and cont.bbox.ymin <= cy <= cont.bbox.ymax:
+                                spatial_relations.append(f"[{obj_name}] is inside [container_box]")
+                            elif cy < cont.bbox.ymin:
+                                spatial_relations.append(f"[{obj_name}] is above [container_box]")
+                            elif cy > cont.bbox.ymax:
+                                spatial_relations.append(f"[{obj_name}] is below [container_box]")
+                            elif cx < cont.bbox.xmin:
+                                spatial_relations.append(f"[{obj_name}] is left of [container_box]")
+                            elif cx > cont.bbox.xmax:
+                                spatial_relations.append(f"[{obj_name}] is right of [container_box]")
+            
+            # Explicit Human Body Spatial Position (Deterministic 2D Depth Heuristic)
+            cont = objects_cam.get("container_box")
+            human = objects_cam.get("human_body") or objects_cam.get("person") or objects_cam.get("astronaut")
+            if cont and cont.bbox and human and human.bbox:
+                # Use ymax (feet position) to determine depth occlusion
+                # If human feet are higher up in the 2D image than the container bottom, they are behind
+                if human.bbox.ymax < cont.bbox.ymax - 20:
+                    spatial_relations.insert(0, "[human_body] is behind [container_box]")
+                elif human.bbox.ymax > cont.bbox.ymax + 20:
+                    spatial_relations.insert(0, "[human_body] is in front of [container_box]")
+                else:
+                    spatial_relations.insert(0, "[human_body] is beside [container_box]")
+            
+            # Log spatial relations to separate file
+            if spatial_relations:
+                with open(spatial_log_path, "a") as sf:
+                    sf.write(f"F{frame_id:04d} | {', '.join(spatial_relations)}\n")
+
             # AGENT 2: IMU Agent (128 Hz ingestion / virtual kinematics + ZUPT)
             imu_telemetry = agent_imu.update_from_vision(pose_cam)
 
@@ -403,8 +462,9 @@ def run_orchestrator(
             )
 
             # AGENT 4: HAR Agent (AdaSpot RoI + 3D Hand-Object Interaction Engine)
+            spatial_metrics = agent_spatial.evaluate_spatial_metrics(fused_pose, objects_rack)
             active_hoi, objects_state, current_activity = agent_har.evaluate_interactions(
-                fused_pose, objects_rack, lid_angle
+                fused_pose, objects_rack, lid_angle, spatial_metrics
             )
             # Push Telemetry Snapshot to Real-Time Local LLM Verifier
             comp_obj = objects_state.get("component_box")
@@ -415,14 +475,6 @@ def run_orchestrator(
 
             is_priority = (agent_validation.anomaly_status != AnomalyType.NONE) or (agent_validation.debounce_counter > 0)
             detected_names = list(objects_state.keys())
-
-            # Compile semantic relations for the LLM prompt
-            rel_strings = []
-            for obj_name, obj in objects_state.items():
-                if hasattr(obj, "relations") and obj.relations:
-                    for r in obj.relations:
-                        rel_strings.append(f"{r.subject_name} --{r.predicate}--> {r.object_name}")
-            semantic_relations_str = ", ".join(rel_strings) if rel_strings else "None"
 
             llm_verifier.push_telemetry(
                 frame_id=frame_id,
@@ -435,8 +487,8 @@ def run_orchestrator(
                 anomaly=agent_validation.anomaly_status,
                 frame=raw_frame,
                 detected_objects=detected_names,
-                force_priority=is_priority,
-                semantic_relations=semantic_relations_str
+                spatial_relations=spatial_relations,
+                force_priority=is_priority
             )
             llm_verif = llm_verifier.get_latest_verification()
 
@@ -492,7 +544,7 @@ def run_orchestrator(
 
             # AGENT 6: Validation Agent (Deterministic FSM + Adaptive Debounce + Local LLM Consensus)
             step, deb_count, anomaly, anomaly_msg, trans_event = agent_validation.evaluate_step(
-                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif, current_activity=current_activity
+                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif
             )
 
             # Preserve ongoing procedural step and reflect any detected non-procedural activity across attributes
@@ -571,7 +623,8 @@ def run_orchestrator(
                 is_step_correct=agent_validation.is_step_correct,
                 step_verdict=agent_validation.step_verdict,
                 experiment_id=agent_validation.experiment_id,
-                scene_graph=scene_graph
+                scene_graph=scene_graph,
+                spatial_relations=spatial_relations
             )
 
             # On-Screen Video Feed Display (Native OpenCV Window, only if Desktop GUI is NOT active)
@@ -606,7 +659,7 @@ def run_orchestrator(
 
             # Procedure Step Event Commit
             if trans_event:
-                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.name})")
+                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.get_name(is_red_yellow)})")
 
             # Procedural Completion: Trigger Automated Offline Local LLM Audit (Async / Non-Blocking)
             if trans_event in ("BOX_CLOSED", "YELLOW_BOX_EXTRACTED", "BENCHMARK_COMPLETE"):
@@ -628,7 +681,7 @@ def run_orchestrator(
                 vlm_wrong = llm_verif.get("what_is_wrong", "None")
                 wrong_disp = f" | Issue: {vlm_wrong[:35]}" if (vlm_wrong != "None" and not agent_validation.is_step_correct) else ""
                 sys.stdout.write(
-                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.name:16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
+                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.get_name(is_red_yellow):16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
                 )
                 sys.stdout.flush()
 
@@ -659,6 +712,21 @@ def run_orchestrator(
             agent_monitoring.close()
         except (Exception, KeyboardInterrupt):
             pass
+
+        # Trigger mesh recovery after video file is fully closed/finalized
+        try:
+            from src.core.mesh_recovery import start_async_mesh_recovery
+            video_to_process = None
+            if hasattr(agent_monitoring, 'video_pipeline') and agent_monitoring.video_pipeline and agent_monitoring.video_pipeline.local_output_path:
+                video_to_process = agent_monitoring.video_pipeline.local_output_path
+            elif source_type != "LIVE_WEBCAM" and isinstance(source, str):
+                video_to_process = source
+            
+            if video_to_process:
+                print(f"\n[Orchestrator] Automatically triggering Mesh Recovery on finalized video: {video_to_process}")
+                start_async_mesh_recovery(video_to_process)
+        except Exception as e:
+            print(f"[Orchestrator] Mesh Recovery finalization notice: {e}")
         
         # Calculate final telemetry compression audit
         try:

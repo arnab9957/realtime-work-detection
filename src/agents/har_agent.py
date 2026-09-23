@@ -5,14 +5,15 @@ and temporal activity recognition primitives (Approach, Contact, Grasp, Extract,
 """
 
 import math
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 from src.core.types import (
     AstronautPose3D,
     ExperimentObject,
     HOIInteraction,
     HOIAction,
     EntityState,
-    Vector3D
+    Vector3D,
+    SpatialMetrics
 )
 
 
@@ -56,7 +57,8 @@ class HARAgent:
         self,
         pose: AstronautPose3D,
         objects: Dict[str, ExperimentObject],
-        lid_angle: float
+        lid_angle: float,
+        spatial_metrics: SpatialMetrics
     ) -> Tuple[List[HOIInteraction], Dict[str, ExperimentObject], str]:
         """
         Evaluates 3D spatial kinematics and interactions between astronaut hand and experimental items.
@@ -90,7 +92,7 @@ class HARAgent:
             if not obj:
                 continue
 
-            dist = wrist_pos.distance_to(obj.pos_rack)
+            dist = spatial_metrics.distance_to_components_m.get(obj_name, 999.0)
             if obj_name not in self.contact_frame_counters:
                 self.contact_frame_counters[obj_name] = 0
 
@@ -115,7 +117,7 @@ class HARAgent:
                     obj_cx = (obj.bbox.xmin + obj.bbox.xmax) / 2.0
                     obj_cy = (obj.bbox.ymin + obj.bbox.ymax) / 2.0
                     # Lifted above or moved outside lateral container bounds
-                    if (obj_cy < cont.bbox.ymin - 10 or 
+                    if (obj_cy < cont.bbox.ymin - 30 or 
                         obj_cx < cont.bbox.xmin - 30 or 
                         obj_cx > cont.bbox.xmax + 30):
                         is_outside = True
@@ -124,7 +126,7 @@ class HARAgent:
                 else:
                     delta_y = obj.pos_rack.y - cont_pos.y
                     delta_x = abs(obj.pos_rack.x - cont_pos.x)
-                    if delta_x > 0.22 or delta_y < -0.15:
+                    if delta_x > 0.22 or delta_y < -0.25:
                         is_outside = True
                     else:
                         is_outside = False
@@ -169,14 +171,8 @@ class HARAgent:
             if lid_angle >= 15.0 and abs(delta_lid) > 0.6:
                 primary_activity = "OPENING CONTAINER" if delta_lid > 0 else "CLOSING CONTAINER"
             elif cont:
-                cont_dist = wrist_pos.distance_to(cont.pos_rack)
-                # Check if wrist is reaching inside container region
-                wrist_in_container = False
-                if cont.bbox and pose.keypoints_2d.get("right_wrist"):
-                    wx, wy, _ = pose.keypoints_2d["right_wrist"]
-                    if (cont.bbox.xmin <= wx <= cont.bbox.xmax and 
-                        cont.bbox.ymin <= wy <= cont.bbox.ymax):
-                        wrist_in_container = True
+                cont_dist = spatial_metrics.distance_to_container_m
+                wrist_in_container = spatial_metrics.wrist_in_container_2d
 
                 if wrist_in_container or cont_dist <= self.contact_threshold_m:
                     primary_activity = "REACHING INTO BOX" if lid_angle >= 15.0 else "CONTACTING CONTAINER"
@@ -208,6 +204,19 @@ class HARAgent:
                 primary_activity = detected_non_proc
 
         self.previous_wrist_pos = wrist_pos
+
+        # Record action snapshot into temporal sliding window
+        self.action_history.append({
+            "activity": primary_activity,
+            "hoi_actions": [h.action.value for h in active_hoi],
+            "lid_angle": lid_angle,
+            "objects_inside": {name: obj.is_inside_container for name, obj in objects.items()
+                               if name not in self.EXCLUDED_TARGETS},
+            "extracted": dict(self.previously_extracted),
+        })
+        if len(self.action_history) > self.action_history_max:
+            self.action_history.pop(0)
+
         return active_hoi, objects, primary_activity
 
     def _detect_non_procedural_motion(self, pose: AstronautPose3D, cont_pos: Vector3D) -> Optional[str]:

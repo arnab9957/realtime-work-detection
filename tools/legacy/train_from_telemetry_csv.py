@@ -57,7 +57,7 @@ def train_from_csv(
         for row in reader:
             try:
                 step_id = int(row.get("step_id", 0))
-                if step_id < 0 or step_id > 4:
+                if step_id < 0 or step_id > 5:
                     continue
 
                 lid_angle = float(row.get("lid_angle_deg", 0.0)) / 90.0
@@ -83,7 +83,7 @@ def train_from_csv(
     # Step distribution report
     from collections import Counter
     counts = Counter(labels)
-    step_names = {0: "IDLE", 1: "BOX_OPENED", 2: "OBJECT_EXTRACTED", 3: "OBJECT_RETURNED", 4: "COMPLETE"}
+    step_names = {0: "IDLE", 1: "BOX_OPENED", 2: "RED_BOX_EXTRACTED", 3: "YELLOW_BOX_EXTRACTED", 4: "OBJECTS_RETURNED", 5: "BOX_CLOSED"}
     print("[Dataset Class Distribution]:")
     for s_id in sorted(counts.keys()):
         print(f"   - Step {s_id} ({step_names.get(s_id, 'UNKNOWN')}): {counts[s_id]:,} frames ({counts[s_id]/total_samples*100:.1f}%)")
@@ -106,7 +106,7 @@ def train_from_csv(
 
     # Multi-Layer Perceptron Classifier
     class TelemetryHARClassifier(nn.Module):
-        def __init__(self, in_features=8, num_classes=5):
+        def __init__(self, in_features=8, num_classes=6):
             super().__init__()
             self.net = nn.Sequential(
                 nn.Linear(in_features, 128),
@@ -124,7 +124,7 @@ def train_from_csv(
         def forward(self, x):
             return self.net(x)
 
-    model = TelemetryHARClassifier(in_features=8, num_classes=5)
+    model = TelemetryHARClassifier(in_features=8, num_classes=6)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
@@ -160,7 +160,7 @@ def train_from_csv(
         "model_state_dict": model.state_dict(),
         "in_features": 8,
         "input_features": 8,
-        "classes": [step_names[i] for i in range(5)],
+        "classes": [step_names[i] for i in range(6)],
         "source_csv": os.path.basename(csv_path),
         "total_samples": total_samples,
         "val_accuracy": accuracy,

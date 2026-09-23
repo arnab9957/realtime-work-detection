@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def train_offline_detector(
     data_yaml="dataset/box_manipulation_dataset/data.yaml",
     output_model="models/detector_offline.pt",
-    epochs=12,
-    img_size=416,
+    epochs=35,
+    img_size=640,
     batch_size=16,
     device=None,
     workers=None
@@ -90,9 +90,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="dataset/box_manipulation_dataset/data.yaml", help="Path to data.yaml")
     parser.add_argument("--output", type=str, default="models/detector_offline.pt", help="Path to save output model")
-    parser.add_argument("--epochs", type=int, default=12, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=35, help="Number of training epochs")
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
-    parser.add_argument("--imgsz", type=int, default=416, help="Image resolution size")
+    parser.add_argument("--imgsz", type=int, default=640, help="Image resolution size")
     parser.add_argument("--device", type=str, default=None, help="Device (0, cpu, etc.)")
     args = parser.parse_args()
     train_offline_detector(
