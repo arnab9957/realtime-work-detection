@@ -466,11 +466,25 @@ def run_orchestrator(
             active_hoi, objects_state, current_activity = agent_har.evaluate_interactions(
                 fused_pose, objects_rack, lid_angle, spatial_metrics
             )
-            # Push Telemetry Snapshot to Real-Time Local LLM Verifier
+            # Distance Calculations (Hand to Boxes)
             comp_obj = objects_state.get("component_box")
             is_inside = comp_obj.is_inside_container if comp_obj else True
-            w_joint = fused_pose.joints.get("wrist")
+            w_joint = fused_pose.joints.get("right_wrist") or fused_pose.joints.get("wrist")
             h_dist = w_joint.pos_rack.distance_to(comp_obj.pos_rack) if (w_joint and comp_obj) else 0.50
+            
+            red_box = objects_state.get("red_box")
+            yellow_box = objects_state.get("yellow_box")
+            dist_red = w_joint.pos_rack.distance_to(red_box.pos_rack) if (w_joint and red_box) else -1.0
+            dist_yellow = w_joint.pos_rack.distance_to(yellow_box.pos_rack) if (w_joint and yellow_box) else -1.0
+            
+            # Log exact 3D distances to CSV (Real-Time)
+            dist_csv_path = os.path.join(output_csv_dir, "hand_box_distances_realtime.csv")
+            if not os.path.exists(dist_csv_path):
+                with open(dist_csv_path, "w") as df:
+                    df.write("frame,timestamp_sec,hand_red_box_dist_m,hand_yellow_box_dist_m\n")
+            with open(dist_csv_path, "a") as df:
+                df.write(f"{frame_id},{round(time.time() - t_start, 3)},{dist_red:.3f},{dist_yellow:.3f}\n")
+
             primary_hoi = active_hoi[0].action.value if active_hoi else "IDLE"
 
             is_priority = (agent_validation.anomaly_status != AnomalyType.NONE) or (agent_validation.debounce_counter > 0)

@@ -157,15 +157,20 @@ class PerceptionAgent:
         # 1. Primary Neural Object Detector (YOLOv8 offline model trained on boxes & hands)
         if self.model is not None:
             try:
-                # conf=0.25 cleanly rejects background clutter while preserving real boxes (conf ~0.85-0.97)
-                results = self.model(frame, verbose=False, conf=0.25)
+                # conf=0.65 cleanly rejects background clutter while preserving real boxes (conf ~0.85-0.97)
+                results = self.model(frame, verbose=False, conf=0.65)
                 if results and len(results) > 0 and getattr(results[0], "boxes", None) is not None:
                     class_names = getattr(self.model, "names", None)
                     if not class_names:
-                        class_names = {
-                            0: "container_box", 1: "container_lid", 2: "component_box",
-                            3: "operator_hand", 4: "human_body"
-                        }
+                        try:
+                            with open("configs/classes.json", "r") as f:
+                                config_classes = json.load(f)
+                                class_names = {v: k for k, v in config_classes.items()}
+                        except Exception:
+                            class_names = {
+                                0: "container_box", 1: "container_lid", 2: "component_box",
+                                3: "operator_hand", 4: "human_body"
+                            }
                     
                     boxes_list = list(results[0].boxes)  # type: ignore
                     boxes_sorted = sorted(boxes_list, key=lambda b: float(b.conf[0]), reverse=True)  # type: ignore
@@ -279,21 +284,21 @@ class PerceptionAgent:
         # 5. Detection for ISRO Dual-Box benchmark objects (Red Box, Yellow Box)
         # Spatial filtering: restrict to astronaut workspace (exclude upper wall & right background)
         if "red_box" not in objects:
-            mask_red1 = cv2.inRange(hsv, np.array([0, 70, 50]), np.array([15, 255, 255]))
-            mask_red2 = cv2.inRange(hsv, np.array([160, 70, 50]), np.array([180, 255, 255]))
+            mask_red1 = cv2.inRange(hsv, np.array([0, 120, 90]), np.array([15, 255, 255]))
+            mask_red2 = cv2.inRange(hsv, np.array([160, 120, 90]), np.array([180, 255, 255]))
             mask_red = cv2.bitwise_or(mask_red1, mask_red2)
-            mask_red[:int(0.28 * h), :] = 0   # Exclude upper ceiling / background
+            mask_red[:int(0.40 * h), :] = 0   # Exclude upper ceiling / background
             mask_red[:, int(0.62 * w):] = 0   # Exclude right wall
-            red_bbox, red_center = self._extract_largest_bbox(mask_red, "red_box", 2, min_area=200, max_area=150000)
+            red_bbox, red_center = self._extract_largest_bbox(mask_red, "red_box", 2, min_area=3500, max_area=150000)
             if red_bbox:
                 red_cam = self._pixel_to_camera_coord(red_center[0], red_center[1], depth_m=1.15)
                 objects["red_box"] = ExperimentObject(name="red_box", class_name="red_box", bbox=red_bbox, pos_rack=red_cam)
 
         if "yellow_box" not in objects:
-            mask_yellow = cv2.inRange(hsv, np.array([15, 70, 50]), np.array([40, 255, 255]))
-            mask_yellow[:int(0.32 * h), :] = 0  # Exclude upper ceiling / background wall
+            mask_yellow = cv2.inRange(hsv, np.array([15, 120, 90]), np.array([40, 255, 255]))
+            mask_yellow[:int(0.40 * h), :] = 0  # Exclude upper ceiling / background wall
             mask_yellow[:, int(0.62 * w):] = 0   # Exclude right wall
-            yel_bbox, yel_center = self._extract_largest_bbox(mask_yellow, "yellow_box", 2, min_area=200, max_area=150000)
+            yel_bbox, yel_center = self._extract_largest_bbox(mask_yellow, "yellow_box", 2, min_area=3500, max_area=150000)
             if yel_bbox:
                 yel_cam = self._pixel_to_camera_coord(yel_center[0], yel_center[1], depth_m=1.15)
                 objects["yellow_box"] = ExperimentObject(name="yellow_box", class_name="yellow_box", bbox=yel_bbox, pos_rack=yel_cam)

@@ -1,0 +1,83 @@
+{
+  "model_name": "features_log_ridge",
+  "target": "ground_truth_distance_cm",
+  "sample_count": 20,
+  "feature_count": 34,
+  "feature_columns": [
+    "feature_00",
+    "feature_01",
+    "feature_02",
+    "feature_03",
+    "feature_04",
+    "feature_05",
+    "feature_06",
+    "feature_07",
+    "feature_08",
+    "feature_09",
+    "feature_10",
+    "feature_11",
+    "feature_12",
+    "feature_13",
+    "feature_14",
+    "feature_15",
+    "feature_16",
+    "feature_17",
+    "feature_18",
+    "feature_19",
+    "feature_20",
+    "feature_21",
+    "feature_22",
+    "feature_23",
+    "feature_24",
+    "feature_25",
+    "feature_26",
+    "feature_27",
+    "feature_28",
+    "feature_29",
+    "feature_30",
+    "feature_31",
+    "feature_32",
+    "feature_33"
+  ],
+  "target_transform": "log -> Ridge -> exp",
+  "cross_validation": "LeaveOneOut",
+  "metrics": {
+    "grid_log_ridge": {
+      "mae_cm": 15.259065008685521,
+      "rmse_cm": 22.50300149530352,
+      "r2": 0.6981760832676904,
+      "min_prediction_cm": 10.247155992898058,
+      "max_prediction_cm": 101.06363517673125
+    },
+    "features_log_ridge": {
+      "mae_cm": 6.842150613921595,
+      "rmse_cm": 10.323503607254835,
+      "r2": 0.936477588002382,
+      "min_prediction_cm": 1.5095455579671198,
+      "max_prediction_cm": 178.5028728529736
+    },
+    "combined_log_ridge": {
+      "mae_cm": 7.206933759857703,
+      "rmse_cm": 11.498804053869325,
+      "r2": 0.9211905858028422,
+      "min_prediction_cm": 1.4484357267282892,
+      "max_prediction_cm": 189.08219752710244
+    },
+    "combined_random_forest": {
+      "mae_cm": 10.742957341269843,
+      "rmse_cm": 17.24389187041236,
+      "r2": 0.8227675119424983,
+      "min_prediction_cm": 9.251917989417988,
+      "max_prediction_cm": 102.70265873015875
+    },
+    "combined_hist_gradient": {
+      "mae_cm": 10.671979837679705,
+      "rmse_cm": 17.415535783460296,
+      "r2": 0.819221644091798,
+      "min_prediction_cm": 9.447371063758245,
+      "max_prediction_cm": 99.77024425754428
+    }
+  },
+  "positive_output": true,
+  "warning": "Experimental model. Dataset is still small. Collect additional independent physical setups before production."
+}

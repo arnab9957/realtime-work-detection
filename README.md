@@ -8,6 +8,41 @@
 
 Autonomous, offline, on-board Artificial Intelligence assistant designed to track, guide, and deterministically validate procedural experiments inside the science modules (BAS-03/BAS-04) of the upcoming **Bharatiya Antariksh Station**.
 
+🔗 **Models & Datasets:** [Download from Google Drive](https://drive.google.com/drive/folders/1hmQtozWXRaKYXdwgt94y_2JO5p8CK1Yu?usp=sharing)
+
+---
+
+## 🤯 Quick Guide: How to Train for a New Experiment
+
+To adapt this Multi-Agent system for a new, custom experiment, follow this step-by-step procedure:
+
+1. **Define the New Experiment's Procedure (FSM)**
+   - Create a new JSON file in the `configs/` folder (e.g., `configs/new_experiment_fsm.json`).
+   - Copy the structure from `configs/experiment_fsm.json` and modify the `states`, `expected_events`, and anomalies for your new experiment's logic.
+
+2. **Update the Object Classes (Zero Code Changes)**
+   - Open `configs/classes.json` and add your new experiment's object classes (e.g., `"tool_wrench": 5`, `"solar_panel": 6`).
+   - Both the Perception Agent and the Synthetic Data Generator will automatically read from this JSON file. (No Python modifications needed!)
+
+3. **Generate the Synthetic Dataset**
+   - Run `python tools/generate_synthetic_data.py --dataset` to generate a domain-randomized synthetic YOLO dataset in the `dataset/` directory.
+
+4. **(Optional) Augment with Real-World Data**
+   - Use `python tools/webcam_annotator.py` to record yourself interacting with physical mock-ups of your experiment's objects and annotate the frames with the new class labels.
+
+5. **Train the Object Detection Model (YOLOv8)**
+   - Train the base model (`yolov8n.pt`) to recognize the new dataset using Ultralytics YOLO:
+     `yolo detect train data=dataset/data.yaml model=yolov8n.pt epochs=100 imgsz=640`
+   - Move the resulting `.pt` weights file into the `models/` directory.
+
+6. **Update the Agents for the New Logic**
+   - Point the Perception Agent to the newly trained model weights (e.g., `models/new_experiment_model.pt`) in `main.py` or your configuration.
+   - Update `src/agents/har_agent.py` (and potentially `src/agents/spatial_agent.py`) to recognize Human-Object Interactions (HOIs) associated with your new objects.
+
+7. **Run the New Experiment**
+   - Point the orchestrator to your new procedural configuration and start the pipeline:
+     `python main.py --config configs/new_experiment_fsm.json`
+
 ---
 
 ## 1. System Architecture: The 8-Agent Blackboard

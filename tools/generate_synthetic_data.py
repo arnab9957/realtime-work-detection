@@ -11,14 +11,19 @@ import json
 import numpy as np
 import cv2
 
-# Class Mapping for YOLOv8
-CLASSES = {
-    "container_box": 0,
-    "container_lid": 1,
-    "red_box": 2,
-    "yellow_box": 3,
-    "astronaut_hand": 4
-}
+# Load Class Mapping from config
+try:
+    with open("configs/classes.json", "r") as f:
+        CLASSES = json.load(f)
+except Exception as e:
+    print(f"Warning: Could not load classes.json: {e}. Using defaults.")
+    CLASSES = {
+        "container_box": 0,
+        "container_lid": 1,
+        "red_box": 2,
+        "yellow_box": 3,
+        "astronaut_hand": 4
+    }
 
 
 def draw_perspective_box(img, center, size, color, angle_deg=0, shadow=True):
@@ -275,17 +280,13 @@ def generate_dataset(output_dir="dataset", num_train=120, num_val=30):
                     bh = (y2 - y1) / h
                     f.write(f"{cls_id} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
 
-    # Generate data.yaml
+    names_str = "\n".join([f"  {v}: {k}" for k, v in CLASSES.items()])
     yaml_content = f"""path: {os.path.abspath(output_dir)}
 train: images/train
 val: images/val
 
 names:
-  0: container_box
-  1: container_lid
-  2: red_box
-  3: yellow_box
-  4: astronaut_hand
+{names_str}
 """
     with open(os.path.join(output_dir, "data.yaml"), "w") as f:
         f.write(yaml_content)

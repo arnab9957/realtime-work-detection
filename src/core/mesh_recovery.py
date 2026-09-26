@@ -93,6 +93,21 @@ def start_async_mesh_recovery(video_path: str, output_dir: str = "experiments/me
         tmp_dir = os.path.join(output_dir, "tmp")
         os.makedirs(tmp_dir, exist_ok=True)
         preds = infer_video(sess, hmr_input, tmp_dir=tmp_dir)
+        
+        # Save raw 3D mesh predictions (PyTorch format and Pickle) for downstream processing
+        import torch
+        import pickle
+        pt_path = os.path.join(output_dir, "mesh_predictions.pt")
+        pkl_path = os.path.join(output_dir, "mesh_predictions.pkl")
+        
+        try:
+            torch.save(preds, pt_path)
+            with open(pkl_path, "wb") as f:
+                pickle.dump(preds, f)
+            print(f"[Mesh Recovery] Successfully serialized 3D data to {pt_path} and {pkl_path}")
+        except Exception as save_err:
+            print(f"[Mesh Recovery] Warning: Could not serialize 3D mesh data: {save_err}")
+            
         render_results_video(sess, preds, out_dir=output_dir, tmp_dir=tmp_dir)
         
         print(f"[Mesh Recovery] Successfully generated 3D meshes and video overlay in {output_dir}")
