@@ -8,6 +8,8 @@
 
 Autonomous, offline, on-board Artificial Intelligence assistant designed to track, guide, and deterministically validate procedural experiments inside the science modules (BAS-03/BAS-04) of the upcoming **Bharatiya Antariksh Station**.
 
+🔗 **Models & Datasets:** [Download from Google Drive](https://drive.google.com/drive/folders/1hmQtozWXRaKYXdwgt94y_2JO5p8CK1Yu?usp=sharing)
+
 ---
 
 ## 🤯 Quick Guide: How to Train for a New Experiment
