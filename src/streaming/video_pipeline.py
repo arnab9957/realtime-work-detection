@@ -20,7 +20,15 @@ import json
 class StreamHandler(BaseHTTPRequestHandler):
     """Serves real-time MJPEG video, snapshots, and telemetry to browser clients."""
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Cache-Control')
+        self.end_headers()
+
     def do_GET(self):
+
         if self.path in ('/stream', '/video'):
             self.send_response(200)
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
@@ -125,6 +133,19 @@ class StreamHandler(BaseHTTPRequestHandler):
             self.wfile.write(resp)
             self.wfile.flush()
 
+        elif self.path.startswith('/start') or self.path.startswith('/api/start'):
+            # Trigger real-time experiment start / resume
+            self.server.start_requested = True
+            resp = json.dumps({"status": "ok", "message": "Test sequence start requested"}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.end_headers()
+            self.wfile.write(resp)
+            self.wfile.flush()
+
         elif self.path.startswith('/api/session_actions') or self.path.startswith('/session_actions.json'):
             # Return current structured action log
             json_path = "experiments/session_actions.json"
@@ -182,12 +203,14 @@ class StreamHandler(BaseHTTPRequestHandler):
             if target:
                 if target in ('cam', 'webcam', '0', 'live'):
                     self.server.source_switch_requested = "0"
+                elif target in ('dummy', 'c1', 'c1.mp4'):
+                    self.server.source_switch_requested = "c1.mp4" if os.path.exists("c1.mp4") else "clip1.mp4"
                 elif 'red' in str(target).lower() or 'yellow' in str(target).lower():
                     self.server.source_switch_requested = "red_yellow.mp4"
                 elif os.path.exists(str(target)):
                     self.server.source_switch_requested = str(target)
                 else:
-                    self.server.source_switch_requested = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
+                    self.server.source_switch_requested = "c1.mp4" if os.path.exists("c1.mp4") else ("clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4")
                 resp = json.dumps({"status": "ok", "requested_source": self.server.source_switch_requested}).encode('utf-8')
             else:
                 curr = getattr(self.server, 'current_source_type', 'LIVE_WEBCAM')
@@ -289,6 +312,7 @@ class DualVideoPipeline:
             self._server.latest_jpeg = None
             self._server.latest_twin_jpeg = None
             self._server.reset_requested = False
+            self._server.start_requested = False
             self._server_thread = threading.Thread(target=self._server.serve_forever, daemon=True)
             self._server_thread.start()
             print(f"[Dual Video Pipeline] IP Live Streaming active at: http://localhost:{self.stream_port}/stream")
@@ -299,6 +323,13 @@ class DualVideoPipeline:
         """Returns True if a reset was requested via /reset HTTP endpoint and clears the flag."""
         if self._server and getattr(self._server, 'reset_requested', False):
             self._server.reset_requested = False
+            return True
+        return False
+
+    def check_and_clear_start(self) -> bool:
+        """Returns True if a start was requested via /start HTTP endpoint and clears the flag."""
+        if self._server and getattr(self._server, 'start_requested', False):
+            self._server.start_requested = False
             return True
         return False
 

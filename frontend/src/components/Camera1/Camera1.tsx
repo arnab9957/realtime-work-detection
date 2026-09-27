@@ -42,11 +42,20 @@ export function Camera1({ telemetry }: Camera1Props) {
       }
     };
 
+    const onSourceSwitch = () => {
+      setStreamBroken(false);
+      if (imgRef.current) {
+        imgRef.current.src = `${API.STREAM}?t=${Date.now()}`;
+      }
+    };
+
     img.addEventListener('error', onError);
     img.addEventListener('load', onLoad);
+    window.addEventListener('bas-source-switch', onSourceSwitch);
     return () => {
       img.removeEventListener('error', onError);
       img.removeEventListener('load', onLoad);
+      window.removeEventListener('bas-source-switch', onSourceSwitch);
       if (fallbackRef.current) clearInterval(fallbackRef.current);
     };
   }, []);
@@ -61,9 +70,14 @@ export function Camera1({ telemetry }: Camera1Props) {
           <Layers size={14} strokeWidth={2} style={{ color: 'var(--cyan)' }} />
           <span className="panel-title">Camera 01 — HAR Output</span>
         </div>
-        <span className={`feed-badge ${streamBroken ? 'badge-warn' : 'badge-live'}`}>
-          {streamBroken ? 'Snapshot Mode' : 'Live Stream'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="feed-source-chip font-mono">
+            {telemetry.source_type === 'LIVE_WEBCAM' ? 'LIVE CAM #0' : 'DUMMY (c1.mp4)'}
+          </span>
+          <span className={`feed-badge ${streamBroken ? 'badge-warn' : 'badge-live'}`}>
+            {streamBroken ? 'Snapshot Mode' : 'Live Stream'}
+          </span>
+        </div>
       </div>
 
       {/* ── Stream area ─────────────────────────────────────── */}

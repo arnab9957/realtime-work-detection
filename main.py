@@ -349,8 +349,9 @@ def run_orchestrator(
                 except Exception as e:
                     print(f"[Orchestrator] Experiment switch error: {e}")
 
-            # Check manual reset request from web client or desktop GUI
+            # Check manual reset or start request from web client or desktop GUI
             web_reset = enable_streaming and agent_monitoring.check_reset_requested()
+            web_start = enable_streaming and hasattr(agent_monitoring, 'check_start_requested') and agent_monitoring.check_start_requested()
             gui_reset = desktop_gui and desktop_gui.check_reset_requested()
             if web_reset or gui_reset:
                 print("\n[Orchestrator] Reset requested from UI. Restarting real-time test from Step 0...")
@@ -359,12 +360,50 @@ def run_orchestrator(
                 reset_pipeline()
                 frame_id = 0
                 prev_frame_time = time.time()
+            elif web_start:
+                print("\n[Orchestrator] Start/Restart requested from UI...")
+                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= (5 if is_red_yellow else 4):
+                    if not str(source).isdigit():
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    reset_pipeline()
+                    frame_id = 0
+                    prev_frame_time = time.time()
 
             ret, raw_frame = cap.read()
             if not ret:
                 # On live webcam, momentarily dropped frames should not exit or loop
                 if str(source).isdigit() or source_type == "LIVE_WEBCAM":
                     time.sleep(0.01)
+                    continue
+
+                if enable_streaming:
+                    # Procedure reached end of video stream. Hold server alive in completed state so user can Reset or Start from Web UI
+                    print("\n[Orchestrator] Procedure COMPLETED or video stream ended. Holding stream server (awaiting Reset or Start from Web UI)...")
+                    while True:
+                        if agent_monitoring.check_reset_requested():
+                            print("\n[Orchestrator] Reset requested from UI. Restarting test sequence from Step 0...")
+                            if not str(source).isdigit():
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            reset_pipeline()
+                            frame_id = 0
+                            prev_frame_time = time.time()
+                            break
+                        if hasattr(agent_monitoring, 'check_start_requested') and agent_monitoring.check_start_requested():
+                            print("\n[Orchestrator] Start requested from UI. Restarting test sequence from Step 0...")
+                            if not str(source).isdigit():
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            reset_pipeline()
+                            frame_id = 0
+                            prev_frame_time = time.time()
+                            break
+                        if hasattr(agent_monitoring, 'check_source_switch_requested'):
+                            if agent_monitoring.video_pipeline and getattr(agent_monitoring.video_pipeline._server, 'source_switch_requested', None):
+                                break
+                        if show_window and not desktop_gui:
+                            k = cv2.waitKey(40) & 0xFF
+                            if k == ord('q'):
+                                break
+                        time.sleep(0.05)
                     continue
 
                 # If experiment reached COMPLETE, hold final completed state for 3s so user/web client sees completion

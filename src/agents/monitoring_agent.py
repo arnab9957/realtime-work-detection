@@ -71,6 +71,12 @@ class MonitoringAgent:
             return self.video_pipeline.check_and_clear_reset()
         return False
 
+    def check_start_requested(self) -> bool:
+        """Checks if web client requested an experiment start."""
+        if self.video_pipeline:
+            return self.video_pipeline.check_and_clear_start()
+        return False
+
     def process_egress(
         self,
         raw_frame: np.ndarray,
