@@ -17,3 +17,9 @@ huggingface_hub>=0.23.0
 onnxruntime>=1.15.0
 onnx>=1.14.0
 scipy>=1.10.0
+
+# Audio & Speech Synthesis
+pyttsx3>=2.90
+
+# Visualization & Reporting
+matplotlib>=3.5.0

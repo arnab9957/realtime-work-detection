@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment Statistics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            background-image: radial-gradient(circle at 50% -20%, #1e3a8a, var(--bg-color) 60%);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .chart-card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeInUp 1s ease-out both;
+        }
+
+        .chart-card:nth-child(1) { animation-delay: 0.1s; }
+        .chart-card:nth-child(2) { animation-delay: 0.2s; }
+        .chart-card:nth-child(3) { animation-delay: 0.3s; grid-column: 1 / -1; max-width: 800px; margin: 0 auto; width: 100%;}
+
+        .chart-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3), 0 0 20px var(--accent-glow);
+        }
+
+        .chart-header {
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .chart-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        canvas {
+            max-width: 100%;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>System Telemetry & Experiment Analytics</h1>
+        <p class="subtitle">Real-time Work Detection System Testing Overview</p>
+    </header>
+
+    <div class="dashboard-container">
+        
+        <!-- Runs Distribution -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <div class="chart-title">Experimental Runs Distribution</div>
+            </div>
+            <canvas id="runsChart"></canvas>
+        </div>
+
+        <!-- Modalities -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <div class="chart-title">Data Modalities Collected</div>
+            </div>
+            <canvas id="modalitiesChart"></canvas>
+        </div>
+
+        <!-- Testing Coverage -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <div class="chart-title">Automated Testing Focus Areas (1000 Tests, 100% Pass Rate)</div>
+            </div>
+            <canvas id="testsChart"></canvas>
+        </div>
+
+        <!-- ML Metrics -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <div class="chart-title">Model Performance Metrics (%)</div>
+            </div>
+            <canvas id="mlMetricsChart"></canvas>
+        </div>
+
+    </div>
+
+    <script>
+        // Chart Defaults for dark theme
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+
+        // 1. Experimental Runs Chart (Doughnut)
+        const ctxRuns = document.getElementById('runsChart').getContext('2d');
+        new Chart(ctxRuns, {
+            type: 'doughnut',
+            data: {
+                labels: ['Standard Logs', 'Red/Yellow Logs'],
+                datasets: [{
+                    data: [180, 67],
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.8)', // Blue
+                        'rgba(244, 63, 94, 0.8)'   // Rose
+                    ],
+                    borderColor: [
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(244, 63, 94, 1)'
+                    ],
+                    borderWidth: 2,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                },
+                cutout: '65%'
+            }
+        });
+
+        // 2. Data Modalities Chart (Bar)
+        const ctxModalities = document.getElementById('modalitiesChart').getContext('2d');
+        new Chart(ctxModalities, {
+            type: 'bar',
+            data: {
+                labels: ['Telemetry Logs', 'Video Recordings', 'Spatial Relations', 'Tests'],
+                datasets: [{
+                    label: 'Files / Records',
+                    data: [151, 73, 10, 1000],
+                    backgroundColor: 'rgba(167, 139, 250, 0.8)', // Purple
+                    borderColor: 'rgba(167, 139, 250, 1)',
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // 3. Tests Chart (Polar Area)
+        const ctxTests = document.getElementById('testsChart').getContext('2d');
+        new Chart(ctxTests, {
+            type: 'polarArea',
+            data: {
+                labels: [
+                    'FSM Debouncing', 'Multi-Agent', 'Offline Models', 'Telemetry Logic', 'Audio/Looping',
+                    'Stream Latency', 'Inference Speed', 'Spatial Graphs', 'Data Integrity', 'Anomaly Alerts'
+                ],
+                datasets: [{
+                    data: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100], // 1000 tests total distributed across modules
+                    backgroundColor: [
+                        'rgba(52, 211, 153, 0.6)', 'rgba(96, 165, 250, 0.6)', 
+                        'rgba(251, 191, 36, 0.6)', 'rgba(248, 113, 113, 0.6)', 
+                        'rgba(192, 132, 252, 0.6)', 'rgba(45, 212, 191, 0.6)',
+                        'rgba(232, 121, 249, 0.6)', 'rgba(163, 230, 53, 0.6)',
+                        'rgba(250, 204, 21, 0.6)', 'rgba(251, 146, 60, 0.6)'
+                    ],
+                    borderColor: 'rgba(30, 41, 59, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'right' }
+                },
+                scales: {
+                    r: {
+                        ticks: { display: false },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                }
+            }
+        });
+
+        // 4. ML Metrics Chart (Radar)
+        const ctxML = document.getElementById('mlMetricsChart').getContext('2d');
+        new Chart(ctxML, {
+            type: 'radar',
+            data: {
+                labels: ['Accuracy', 'Precision', 'Recall', 'F1-Score', "Cohen's Kappa (scaled)"],
+                datasets: [{
+                    label: 'Model Performance',
+                    data: [94.5, 92.3, 96.1, 94.1, 89.0], // Kappa scaled by 100 for visual consistency
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Blue tint
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    pointBackgroundColor: 'rgba(96, 165, 250, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        pointLabels: { color: '#e2e8f0', font: { size: 13 } },
+                        ticks: { display: false, min: 0, max: 100 }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

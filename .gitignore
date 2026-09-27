@@ -26,6 +26,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.txt
 
 # Virtual Environments
 venv/
@@ -117,7 +118,6 @@ mesh_recovery
 experiments/*.csv
 experiments/*.json
 experiments/mesh_recovery/
-output/
 realtime_feed/*.csv
 
 
@@ -128,3 +128,7 @@ ffmpeg.exe
 ffplay.exe
 ffprobe.exe
 models.zip
+agenticSTAR-main
+distance_calc
+models.zip
+dataset.zip
