@@ -1,14 +1,9 @@
 import { useRef, useEffect, useState } from 'react';
 import { Package } from 'lucide-react';
-import { useDigitalTwin } from '../../hooks/useDigitalTwin';
 import { API } from '../../services/api';
-
-
-
 
 // ── Camera2 panel ─────────────────────────────────────────────────────────────
 export function Camera2() {
-  const { data } = useDigitalTwin();
   const twinImgRef = useRef<HTMLImageElement>(null);
   const fallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [streamBroken, setStreamBroken] = useState(false);
@@ -21,8 +16,13 @@ export function Camera2() {
       setStreamBroken(true);
       if (fallbackRef.current) return;
       fallbackRef.current = setInterval(() => {
-        if (img) img.src = `${API.TWIN_SNAPSHOT}?t=${Date.now()}`;
-      }, 200);
+        // Double-buffered off-screen preload prevents black screen flicker
+        const preloader = new Image();
+        preloader.onload = () => {
+          if (twinImgRef.current) twinImgRef.current.src = preloader.src;
+        };
+        preloader.src = `${API.TWIN_SNAPSHOT}?t=${Date.now()}`;
+      }, 250);
     };
 
     const onLoad = () => {
@@ -48,7 +48,7 @@ export function Camera2() {
     <div className="panel camera2-panel">
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <Package size={14} strokeWidth={2} style={{ color: 'var(--p-red)' }} />
+          <Package size={14} strokeWidth={2} style={{ color: 'var(--p-forest)' }} />
           <span className="panel-title">Camera 02 — Digital Twin Output</span>
         </div>
         <span className="panel-subtitle">
@@ -64,20 +64,6 @@ export function Camera2() {
             alt="Digital Twin Stream"
             className="stream-img"
           />
-          <div className="stream-overlay-top">
-            <span className="overlay-chip">DIGITAL TWIN ENGINE</span>
-            <span className="overlay-chip">{streamBroken ? 'SNAPSHOT MODE' : 'LIVE TWIN STREAM'}</span>
-          </div>
-        </div>
-
-        {/* HUD */}
-        <div className="viewer-hud">
-          <span className="hud-chip">ELBOW {data.astronaut?.elbow_angle_deg?.toFixed(1) ?? '—'}°</span>
-          <span className={`hud-chip ${data.astronaut?.rom_violated ? 'hud-warn' : ''}`}>
-            ROM {data.astronaut?.rom_violated ? '⚠ VIOLATED' : '✓ OK'}
-          </span>
-          <span className="hud-chip">LID {data.container?.lid_angle_deg?.toFixed(1) ?? '—'}°</span>
-          <span className="hud-chip">{data.step || 'IDLE'}</span>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowDown, CheckCircle2 } from 'lucide-react';
 import { useSessionActions } from '../../hooks/useSessionActions';
 import type { TelemetryData } from '../../types/api';
+import { AnimatedText, SmoothNumber } from '../common/SmoothData';
 
 interface AnomalyDetectionProps {
   telemetry: TelemetryData;
@@ -132,7 +133,7 @@ export function AnomalyDetection({ telemetry }: AnomalyDetectionProps) {
           <AlertTriangle size={14} strokeWidth={2} style={{ color: 'var(--amber)' }} />
           <span className="panel-title">ANOMALY DETECTION</span>
           <span className={`anomaly-severity-badge ${anomalyActive ? '' : 'badge-ok'}`}>
-            {anomalyActive ? 'WARNING' : 'NOMINAL'}
+            <AnimatedText inline>{anomalyActive ? 'WARNING' : 'NOMINAL'}</AnimatedText>
           </span>
         </div>
 
@@ -155,34 +156,42 @@ export function AnomalyDetection({ telemetry }: AnomalyDetectionProps) {
         </div>
       </div>
 
-      {/* Top Status Card */}
+      {/* Top Status Card with smooth transitions */}
       <div className="anomaly-status-card">
         {!anomalyActive ? (
-          <div className="anomaly-normal">
+          <div className="anomaly-normal smooth-status-fade">
             <div className="anomaly-normal-left">
               <span className="status-dot-green" />
               <span className="anomaly-normal-text">ALL SYSTEMS NOMINAL</span>
             </div>
             <span className="anomaly-normal-sub">
-              {telemetry.step_verdict ? telemetry.step_verdict : 'Zero safety violations'}
+              <AnimatedText inline>
+                {telemetry.step_verdict ? telemetry.step_verdict : 'Zero safety violations'}
+              </AnimatedText>
             </span>
           </div>
         ) : (
-          <div className="anomaly-alert">
+          <div className="anomaly-alert smooth-status-fade">
             <div className="anomaly-icon-row">
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <AlertTriangle size={13} className="anomaly-warn-icon" />
                 <span className="anomaly-warn-label">ACTIVE FAULT</span>
               </div>
-              <div className="anomaly-code">{telemetry.anomaly}</div>
+              <div className="anomaly-code">
+                <AnimatedText inline>{telemetry.anomaly}</AnimatedText>
+              </div>
             </div>
 
             <div className="anomaly-card-meta">
               <span className="anomaly-verdict">
-                {telemetry.step_verdict || 'Procedural deviation detected'}
+                <AnimatedText inline>
+                  {telemetry.step_verdict || 'Procedural deviation detected'}
+                </AnimatedText>
               </span>
               {eventTime && (
-                <span className="anomaly-timestamp">Detected: {eventTime}</span>
+                <span className="anomaly-timestamp">
+                  Detected: <AnimatedText inline>{eventTime}</AnimatedText>
+                </span>
               )}
             </div>
 
@@ -199,7 +208,9 @@ export function AnomalyDetection({ telemetry }: AnomalyDetectionProps) {
       {/* Incident Feed Header */}
       <div className="anomaly-feed-header">
         <span>INCIDENT & DEVIATION FEED</span>
-        <span className="badge-count font-mono">{incidents.length} EVENTS</span>
+        <span className="badge-count font-mono">
+          <SmoothNumber value={incidents.length} suffix=" EVENTS" />
+        </span>
       </div>
 
       {/* Scrollable Incident Feed */}

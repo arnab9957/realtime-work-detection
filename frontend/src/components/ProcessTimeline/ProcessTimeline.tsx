@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Activity } from 'lucide-react';
 import { RED_YELLOW_STEPS, BOX_RETURN_STEPS, STEP_LABELS, type ProcessStep } from '../../mock/fallbackData';
 import type { TelemetryData } from '../../types/api';
+import { AnimatedText, SmoothNumber } from '../common/SmoothData';
 
 interface ProcessTimelineProps {
   telemetry: TelemetryData;
@@ -25,7 +26,7 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
     telemetry.step_name === 'BOX_CLOSED' ||
     telemetry.step_name === 'DUAL_COMPLETE';
 
-  // Auto-scroll active step into view
+  // Auto-scroll active step into view with smooth behavior
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -35,6 +36,8 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
     }
   }, [activeIdx]);
 
+  const stepTitle = STEP_LABELS[telemetry.step_name] || telemetry.step_name || 'INITIALIZING';
+
   return (
     <div className="panel timeline-panel">
       <div className="panel-header">
@@ -42,9 +45,15 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
           <Activity size={14} strokeWidth={2} style={{ color: 'var(--green)' }} />
           <span className="panel-title">PROCESS TIMELINE</span>
         </div>
-        <span className="panel-subtitle font-mono">
-          STEP {telemetry.step} · {STEP_LABELS[telemetry.step_name] || telemetry.step_name}
-        </span>
+        <div className="timeline-header-meta">
+          <span className="tl-live-indicator">
+            <span className="tl-live-dot" />
+            <span className="tl-live-text">STEP <SmoothNumber value={telemetry.step} precision={0} /></span>
+          </span>
+          <span className="panel-subtitle font-mono">
+            <AnimatedText inline>{stepTitle}</AnimatedText>
+          </span>
+        </div>
       </div>
 
       <div className="timeline-scroll-wrapper" ref={containerRef}>
@@ -53,6 +62,7 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
             const completed = isComplete || idx < activeIdx;
             const active = !isComplete && idx === activeIdx;
             const upcoming = !isComplete && idx > activeIdx;
+            const isLeadingToActive = !isComplete && idx === activeIdx;
 
             return (
               <div
@@ -66,19 +76,36 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
               >
                 {/* Connector line before step (not before first) */}
                 {idx > 0 && (
-                  <div className={`tl-connector ${completed || active ? 'tl-conn-done' : ''}`} />
+                  <div
+                    className={[
+                      'tl-connector',
+                      completed ? 'tl-conn-done' : '',
+                      isLeadingToActive ? 'tl-conn-active tl-conn-done' : '',
+                    ].filter(Boolean).join(' ')}
+                  />
                 )}
 
-                {/* Circle badge */}
+                {/* Circle badge with smooth animated states */}
                 <div className="tl-circle">
                   {completed ? (
                     <svg viewBox="0 0 16 16" fill="none" className="tl-check">
-                      <polyline points="3 8 7 12 13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <polyline
+                        points="3 8 7 12 13 4"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   ) : (
                     <span className="tl-num">{idx + 1}</span>
                   )}
-                  {active && <span className="tl-pulse" />}
+                  {active && (
+                    <>
+                      <span className="tl-pulse" />
+                      <span className="tl-pulse-2" />
+                    </>
+                  )}
                 </div>
 
                 {/* Label */}
@@ -94,11 +121,9 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
 
 /** Map backend step integer & step_name → steps index */
 function resolveActiveStep(steps: ProcessStep[], stepName: string, stepIdx: number): number {
-  // If valid integer step provided by FSM (0 .. steps.length - 1), it is the canonical ground truth
   if (typeof stepIdx === 'number' && stepIdx >= 0 && stepIdx < steps.length) {
     return stepIdx;
   }
-  // Fallback to key or alias match
   const directIdx = steps.findIndex(
     s => s.key === stepName || (s.aliases && s.aliases.includes(stepName))
   );

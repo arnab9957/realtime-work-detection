@@ -3,6 +3,7 @@ import { Layers, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { STEP_LABELS, RED_YELLOW_STEPS } from '../../mock/fallbackData';
 import { API } from '../../services/api';
 import type { TelemetryData } from '../../types/api';
+import { SmoothNumber, AnimatedText } from '../common/SmoothData';
 
 interface Camera1Props {
   telemetry: TelemetryData;
@@ -21,8 +22,14 @@ export function Camera1({ telemetry }: Camera1Props) {
       setStreamBroken(true);
       if (fallbackRef.current) return;
       fallbackRef.current = setInterval(() => {
-        if (img) img.src = `${API.SNAPSHOT}?t=${Date.now()}`;
-      }, 200);
+        // Flicker-free double buffering for snapshot mode:
+        // Preload image off-screen and swap src only once loaded into GPU buffer
+        const preloader = new Image();
+        preloader.onload = () => {
+          if (imgRef.current) imgRef.current.src = preloader.src;
+        };
+        preloader.src = `${API.SNAPSHOT}?t=${Date.now()}`;
+      }, 250);
     };
 
     const onLoad = () => {
@@ -68,27 +75,53 @@ export function Camera1({ telemetry }: Camera1Props) {
           className="stream-img"
         />
 
-        {/* Frame / FPS telemetry */}
+        {/* Frame / FPS telemetry with tabular nums & smooth interpolation */}
         <div className="stream-overlay-top">
-          <span className="overlay-chip">FRM {String(telemetry.frame_id).padStart(6, '0')}</span>
-          <span className="overlay-chip">{telemetry.fps > 0 ? `${telemetry.fps.toFixed(1)} fps` : '— fps'}</span>
-          <span className="overlay-chip">{telemetry.latency_ms > 0 ? `${telemetry.latency_ms.toFixed(0)} ms` : ''}</span>
+          <span className="overlay-chip">
+            <SmoothNumber value={telemetry.frame_id} padLength={6} prefix="FRM " />
+          </span>
+          <span className="overlay-chip">
+            <SmoothNumber
+              value={telemetry.fps > 0 ? telemetry.fps : null}
+              precision={1}
+              suffix=" fps"
+              fallback="— fps"
+              flash
+            />
+          </span>
+          {telemetry.latency_ms > 0 && (
+            <span className="overlay-chip">
+              <SmoothNumber
+                value={telemetry.latency_ms}
+                precision={0}
+                suffix=" ms"
+                flash
+              />
+            </span>
+          )}
         </div>
 
         {/* Anomaly banner */}
         {anomalyActive && (
           <div className="anomaly-banner">
             <AlertTriangle size={13} strokeWidth={2} />
-            <span>{telemetry.anomaly}</span>
+            <AnimatedText inline>{telemetry.anomaly}</AnimatedText>
           </div>
         )}
 
         {/* Step verdict */}
         <div className={`step-verdict ${telemetry.is_step_correct ? 'verdict-ok' : 'verdict-err'}`}>
-          {telemetry.is_step_correct
-            ? <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={11} strokeWidth={2} /> {telemetry.step_verdict || 'Nominal'}</span>
-            : <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={11} strokeWidth={2} /> {telemetry.step_verdict || 'Deviation'}</span>
-          }
+          {telemetry.is_step_correct ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle2 size={11} strokeWidth={2} />
+              <AnimatedText inline>{telemetry.step_verdict || 'Nominal'}</AnimatedText>
+            </span>
+          ) : (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={11} strokeWidth={2} />
+              <AnimatedText inline>{telemetry.step_verdict || 'Deviation'}</AnimatedText>
+            </span>
+          )}
         </div>
       </div>
 
@@ -96,29 +129,31 @@ export function Camera1({ telemetry }: Camera1Props) {
       <div className="cam1-info-strip">
         <InfoBlock
           label="Previous Step"
-          value={prevStepLabel}
+          value={<AnimatedText>{prevStepLabel}</AnimatedText>}
           variant="dim"
         />
         <div className="info-sep" />
         <InfoBlock
           label="Current Action"
           value={
-            telemetry.what_i_am_doing && telemetry.what_i_am_doing !== 'IDLE'
-              ? telemetry.what_i_am_doing
-              : 'Observing workspace'
+            <AnimatedText>
+              {telemetry.what_i_am_doing && telemetry.what_i_am_doing !== 'IDLE'
+                ? telemetry.what_i_am_doing
+                : 'Observing workspace'}
+            </AnimatedText>
           }
           variant="highlight"
         />
         <div className="info-sep" />
         <InfoBlock
           label="Expected Next"
-          value={telemetry.what_i_have_to_do || '—'}
+          value={<AnimatedText>{telemetry.what_i_have_to_do || '—'}</AnimatedText>}
           icon={<ArrowRight size={10} strokeWidth={2} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />}
         />
         <div className="info-sep" />
         <InfoBlock
           label="Step Status"
-          value={telemetry.step_verdict || 'Awaiting'}
+          value={<AnimatedText>{telemetry.step_verdict || 'Awaiting'}</AnimatedText>}
           variant={anomalyActive ? 'warn' : telemetry.is_step_correct ? 'ok' : 'err'}
         />
       </div>
@@ -133,7 +168,7 @@ function InfoBlock({
   icon,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   variant?: 'dim' | 'highlight' | 'ok' | 'warn' | 'err';
   icon?: React.ReactNode;
 }) {
