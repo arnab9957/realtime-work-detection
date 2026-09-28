@@ -151,8 +151,9 @@ class ValidationAgent:
         active_hoi: list,
         current_frame: int,
         llm_verification: Optional[Dict[str, Any]] = None,
-        action_history: Optional[List[Dict]] = None,
-        astronaut_pose: Optional[AstronautPose3D] = None
+        action_history: Optional[List[Dict[str, Any]]] = None,
+        astronaut_pose: Optional[AstronautPose3D] = None,
+        current_activity: Optional[str] = None
     ) -> Tuple[FSMStep, int, AnomalyType, str, Optional[str]]:
         """
         Evaluates current physical state against procedural state machine with Local LLM consensus.
@@ -216,10 +217,50 @@ class ValidationAgent:
                 self.step_verdict = f"WRONG STEP: {detail} [ERROR_SKIP]"
                 return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
 
-        if llm_verdict == "PROCEDURAL_ERROR" and llm_what_wrong and llm_what_wrong != "None" and llm_confidence >= 0.75:
-            self.vlm_anomaly_explanation = llm_what_wrong
-            if not self.anomaly_message:
-                self.anomaly_message = f"Warning: Wrong move! {llm_what_wrong}"
+        # Check if LLM / VLM or HAR reported ANY non-procedural activity
+        procedural_keywords = (
+            "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
+            "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
+            "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY", "NONE"
+        )
+        non_proc_candidate = None
+        if llm_verification:
+            v_act = str(llm_verification.get("detected_activity", "")).strip().upper()
+            if v_act and not any(kw in v_act for kw in procedural_keywords) and v_act not in ("IDLE", "OBSERVING", "STANDBY", ""):
+                non_proc_candidate = v_act
+
+        if not non_proc_candidate and current_activity:
+            c_act = str(current_activity).strip().upper()
+            if c_act and not any(kw in c_act for kw in procedural_keywords) and c_act not in ("IDLE", "OBSERVING", "STANDBY", ""):
+                non_proc_candidate = c_act
+
+        if non_proc_candidate:
+            clean_act = non_proc_candidate.replace("_", " ").strip()
+            self.anomaly_status = AnomalyType.ERROR_SEQ
+            self.is_step_correct = False
+            self.anomaly_message = f"Warning: Wrong move! Operator is {clean_act}. Please focus on the ongoing procedure."
+            self.step_verdict = f"ANOMALY: {clean_act} [NOT IN PROCEDURE]"
+            self.vlm_anomaly_explanation = self.anomaly_message
+            return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
+        else:
+            if self.anomaly_status == AnomalyType.ERROR_SEQ and "NOT IN PROCEDURE" in self.step_verdict:
+                self.anomaly_status = AnomalyType.NONE
+                self.anomaly_message = ""
+                self.is_step_correct = True
+                self.step_verdict = "CORRECT (NOMINAL)"
+                self.vlm_anomaly_explanation = ""
+
+        if llm_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY") and llm_what_wrong and llm_what_wrong != "None" and llm_confidence >= 0.70:
+            v_time = llm_verification.get("timestamp", 0) if llm_verification else 0
+            # Only intercept if verification is fresh and reports an explicit skip/premature close or future step
+            if (time.time() - v_time) <= 2.0 and ("SKIP" in str(llm_what_wrong).upper() or "FUTURE" in str(llm_what_wrong).upper()):
+                self.vlm_anomaly_explanation = llm_what_wrong
+                self.anomaly_status = AnomalyType.ERROR_SKIP
+                self.is_step_correct = False
+                clean_wrong = llm_what_wrong if llm_what_wrong.startswith("Warning:") else f"Warning: Wrong move! {llm_what_wrong}"
+                self.anomaly_message = clean_wrong
+                self.step_verdict = f"ANOMALY: {llm_what_wrong}"
+                return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
 
         # --- GAP 4: Generic config-driven forbidden_events enforcement ---
         forbidden_result = self._check_forbidden_events(objects, lid_angle, active_hoi)
@@ -266,7 +307,7 @@ class ValidationAgent:
             # Step 0: IDLE -> Awaiting Container Opening
             if self.current_step == FSMStep.IDLE:
                 is_opening = (
-                    lid_angle >= 40.0
+                    lid_angle >= 18.0
                     or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.75 and lid_angle >= 14.0)
                 )
                 if is_opening:
@@ -283,7 +324,7 @@ class ValidationAgent:
             # Step 1: CONTAINER_OPEN -> Extract Red Box
             elif self.current_step == FSMStep.CONTAINER_OPEN:
                 yellow_obj = objects.get("yellow_box")
-                red_obj = objects.get("red_box")
+                red_obj = objects.get("red_box") or objects.get("component_box")
 
                 # Sequence protection: Yellow cannot be extracted before Red
                 yellow_violation = False
@@ -307,6 +348,8 @@ class ValidationAgent:
                 # Check Red Box Extracted
                 red_extracted = False
                 if red_obj and (not red_obj.is_inside_container or red_obj.state == EntityState.EXTRACTED):
+                    red_extracted = True
+                elif any(h.action == HOIAction.EXTRACT for h in active_hoi):
                     red_extracted = True
 
                 if red_extracted:
@@ -350,9 +393,7 @@ class ValidationAgent:
                 yellow_obj = objects.get("yellow_box")
                 red_obj = objects.get("red_box")
                 if (yellow_obj and yellow_obj.is_inside_container) and (red_obj and red_obj.is_inside_container):
-                    is_grasped = any(h.object_name in ("red_box", "yellow_box") and h.action in (HOIAction.GRASP, HOIAction.CONTACT) for h in active_hoi)
-                    if not is_grasped:
-                        objects_returned = True
+                    objects_returned = True
 
                 if objects_returned:
                     self._accumulate_debounce(FSMStep.OBJECTS_RETURNED)
@@ -428,7 +469,7 @@ class ValidationAgent:
                     if self.anomaly_debounce_counter >= 8:
                         if not (llm_verification and llm_verification.get("anomaly_verdict") == "NOMINAL"):
                             self.anomaly_status = AnomalyType.ERROR_SKIP
-                            self.anomaly_message = "Warning: Wrong move! Step skipped. Please extract the object before closing the box."
+                            self.anomaly_message = "Warning: Step skipped. Wrong move! Please extract the object before closing the box."
                             self.is_step_correct = False
                             if llm_what_wrong:
                                 self.vlm_anomaly_explanation = llm_what_wrong
@@ -509,23 +550,18 @@ class ValidationAgent:
 
                 returned = (found_target and all_inside)
                 if returned:
-                    # Require that the astronaut has let go of the object to consider it fully returned
-                    is_grasped = any(h.action in (HOIAction.GRASP, HOIAction.CONTACT) for h in active_hoi)
-                    if not is_grasped:
-                        self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
-                        if self.debounce_counter >= self.debounce_required:
-                            self.current_step = FSMStep.OBJECT_RETURNED
-                            self.candidate_step = None
-                            self.debounce_counter = 0
-                            self.step_start_time = now
-                            self.anomaly_status = AnomalyType.NONE
-                            self.anomaly_message = ""
-                            self.anomaly_debounce_counter = 0
-                            self.is_step_correct = True
-                            self.step_verdict = "STEP OK: Nominal Procedure"
-                            transition_committed = "OBJECT_RETURNED"
-                    else:
-                        self._reset_debounce()
+                    self._accumulate_debounce(FSMStep.OBJECT_RETURNED)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.OBJECT_RETURNED
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        self.anomaly_status = AnomalyType.NONE
+                        self.anomaly_message = ""
+                        self.anomaly_debounce_counter = 0
+                        self.is_step_correct = True
+                        self.step_verdict = "STEP OK: Nominal Procedure"
+                        transition_committed = "OBJECT_RETURNED"
                 else:
                     self._reset_debounce()
 

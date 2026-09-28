@@ -71,6 +71,12 @@ class MonitoringAgent:
             return self.video_pipeline.check_and_clear_reset()
         return False
 
+    def check_start_requested(self) -> bool:
+        """Checks if web client requested an experiment start."""
+        if self.video_pipeline:
+            return self.video_pipeline.check_and_clear_start()
+        return False
+
     def process_egress(
         self,
         raw_frame: np.ndarray,
@@ -201,7 +207,7 @@ class MonitoringAgent:
                 "is_step_correct": is_step_correct,
                 "step_verdict": step_verdict,
                 "experiment_id": experiment_id
-            }, scene_graph=scene_graph)
+            }, scene_graph=scene_graph, twin_frame=twin_canvas)
 
         return annotated_frame
 
@@ -612,16 +618,7 @@ class MonitoringAgent:
         #     cv2.rectangle(frame, (wx1, wy1), (wx2, wy2), (255, 255, 255), 2)
         #     cv2.putText(frame, warn_txt, (wx1 + 14, wy1 + wth + 7), cv2.FONT_HERSHEY_SIMPLEX, w_scale, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # Composite 3D Digital Twin Canvas (Picture-in-Picture)
-        if twin_canvas is not None:
-            tc_h, tc_w = twin_canvas.shape[:2]
-            pip_w, pip_h = 320, 240
-            tc_resized = cv2.resize(twin_canvas, (pip_w, pip_h))
-            pip_x = w - pip_w - 10
-            pip_y = banner_h + 10
-            # Draw border
-            cv2.rectangle(frame, (pip_x - 2, pip_y - 2), (pip_x + pip_w + 2, pip_y + pip_h + 2), (255, 255, 255), 2)
-            frame[pip_y:pip_y+pip_h, pip_x:pip_x+pip_w] = tc_resized
+        # 3D Digital Twin Canvas is dispatched independently to Camera 2 (no PiP overlap)
 
         # Display Spatial Relations (Always show the section to indicate it's active)
         rel_scale = max(0.32, scale * 0.8)

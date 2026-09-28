@@ -27,9 +27,9 @@
                 "YELLOW_BOX_EXTRACTED",
                 "YELLOW_BOX_TOUCHED"
             ],
-            "timeout_seconds": 300,
+            "timeout_seconds": 30,
             "ergonomic_envelope": {
-                "max_elbow_angle_deg": 180,
+                "max_elbow_angle_deg": 160,
                 "max_shoulder_angle_deg": 180,
                 "rom_violation_allowed": true
             }
@@ -45,7 +45,7 @@
                 "LID_CLOSED",
                 "CONTAINER_ABANDONED"
             ],
-            "timeout_seconds": 300,
+            "timeout_seconds": 45,
             "ergonomic_envelope": {
                 "max_elbow_angle_deg": 180,
                 "max_shoulder_angle_deg": 180,

@@ -196,7 +196,7 @@ def run_orchestrator(
             if not os.path.exists(fallback_source):
                 print(f"[Orchestrator] Generating simulation video '{fallback_source}'...")
                 from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source, anomaly=False)
+                generate_experiment_video(fallback_source)
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
             source_type = "RECORDED_CLIP"
@@ -219,7 +219,7 @@ def run_orchestrator(
             fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
             if not os.path.exists(fallback_source):
                 from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source, anomaly=False)
+                generate_experiment_video(fallback_source)
             print(f"[Orchestrator] Automatically falling back to video: '{fallback_source}'...")
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
@@ -232,7 +232,7 @@ def run_orchestrator(
         if not os.path.exists(source):
             print(f"[Orchestrator] Video file '{source}' not found. Generating default simulation...")
             from tools.generate_synthetic_data import generate_experiment_video
-            generate_experiment_video(source, anomaly=False)
+            generate_experiment_video(source)
         cap = cv2.VideoCapture(source)
         source_type = "RED_YELLOW" if "red_yellow" in str(source).lower() else "RECORDED_CLIP"
         print(f"[Orchestrator] Ingesting from Video File: {source}...")
@@ -349,8 +349,9 @@ def run_orchestrator(
                 except Exception as e:
                     print(f"[Orchestrator] Experiment switch error: {e}")
 
-            # Check manual reset request from web client or desktop GUI
+            # Check manual reset or start request from web client or desktop GUI
             web_reset = enable_streaming and agent_monitoring.check_reset_requested()
+            web_start = enable_streaming and hasattr(agent_monitoring, 'check_start_requested') and agent_monitoring.check_start_requested()
             gui_reset = desktop_gui and desktop_gui.check_reset_requested()
             if web_reset or gui_reset:
                 print("\n[Orchestrator] Reset requested from UI. Restarting real-time test from Step 0...")
@@ -359,12 +360,50 @@ def run_orchestrator(
                 reset_pipeline()
                 frame_id = 0
                 prev_frame_time = time.time()
+            elif web_start:
+                print("\n[Orchestrator] Start/Restart requested from UI...")
+                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= (5 if is_red_yellow else 4):
+                    if not str(source).isdigit():
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    reset_pipeline()
+                    frame_id = 0
+                    prev_frame_time = time.time()
 
             ret, raw_frame = cap.read()
             if not ret:
                 # On live webcam, momentarily dropped frames should not exit or loop
                 if str(source).isdigit() or source_type == "LIVE_WEBCAM":
                     time.sleep(0.01)
+                    continue
+
+                if enable_streaming:
+                    # Procedure reached end of video stream. Hold server alive in completed state so user can Reset or Start from Web UI
+                    print("\n[Orchestrator] Procedure COMPLETED or video stream ended. Holding stream server (awaiting Reset or Start from Web UI)...")
+                    while True:
+                        if agent_monitoring.check_reset_requested():
+                            print("\n[Orchestrator] Reset requested from UI. Restarting test sequence from Step 0...")
+                            if not str(source).isdigit():
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            reset_pipeline()
+                            frame_id = 0
+                            prev_frame_time = time.time()
+                            break
+                        if hasattr(agent_monitoring, 'check_start_requested') and agent_monitoring.check_start_requested():
+                            print("\n[Orchestrator] Start requested from UI. Restarting test sequence from Step 0...")
+                            if not str(source).isdigit():
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            reset_pipeline()
+                            frame_id = 0
+                            prev_frame_time = time.time()
+                            break
+                        if hasattr(agent_monitoring, 'check_source_switch_requested'):
+                            if agent_monitoring.video_pipeline and getattr(agent_monitoring.video_pipeline._server, 'source_switch_requested', None):
+                                break
+                        if show_window and not desktop_gui:
+                            k = cv2.waitKey(40) & 0xFF
+                            if k == ord('q'):
+                                break
+                        time.sleep(0.05)
                     continue
 
                 # If experiment reached COMPLETE, hold final completed state for 3s so user/web client sees completion
@@ -506,6 +545,50 @@ def run_orchestrator(
             )
             llm_verif = llm_verifier.get_latest_verification()
 
+            # Synchronize real-time activity from VLM Verifier and semantic relations
+            procedural_stems = (
+                "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
+                "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
+                "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY"
+            )
+
+            if llm_verif:
+                vlm_act = llm_verif.get("detected_activity")
+                vlm_verdict = llm_verif.get("anomaly_verdict", "NOMINAL")
+                what_wrong = str(llm_verif.get("what_is_wrong", "")).lower()
+
+                if vlm_act and vlm_act.upper() not in ("IDLE", "OBSERVING", "NONE", ""):
+                    is_vlm_proc = any(stem in vlm_act.upper() for stem in procedural_stems)
+                    if vlm_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY") or not is_vlm_proc:
+                        current_activity = vlm_act.upper()
+                elif vlm_verdict in ("PROCEDURAL_ERROR", "PHYSICAL_ANOMALY"):
+                    for kw, label in [
+                        ("danc", "DANCING"), ("walk", "WALKING AWAY"), ("pacing", "PACING / WALKING"),
+                        ("wav", "WAVING"), ("clap", "CLAPPING"), ("stretch", "STRETCHING"),
+                        ("phone", "USING PHONE"), ("drink", "DRINKING"), ("eat", "EATING"),
+                        ("jump", "JUMPING"), ("point", "POINTING / GESTURING"), ("gestur", "GESTURING"),
+                        ("scratch", "TOUCHING FACE / HEAD"), ("face", "TOUCHING FACE / HEAD"),
+                        ("head", "TOUCHING FACE / HEAD"), ("cross", "ARMS CROSSED"),
+                        ("hip", "HANDS ON HIPS"), ("rais", "HANDS RAISED"), ("talk", "TALKING"),
+                        ("watch", "LOOKING AT WATCH"), ("bend", "BENDING DOWN"), ("exercis", "EXERCISING")
+                    ]:
+                        if kw in what_wrong:
+                            current_activity = label
+                            break
+                    else:
+                        if "is " in what_wrong:
+                            extracted = what_wrong.split("is ", 1)[1].split(".")[0].split(",")[0].strip().upper()
+                            if extracted:
+                                current_activity = extracted
+
+            # Check semantic relations for anomalous non-procedural activity
+            for obj in objects_state.values():
+                if hasattr(obj, "relations") and obj.relations:
+                    for r in obj.relations:
+                        pred = r.predicate.upper()
+                        if pred not in ("HOLDING", "TOUCHING", "LOOKING AT", "STANDING NEXT TO", "NEAR", "NONE"):
+                            current_activity = pred
+
             # AGENT 5: Digital Twin Agent (3D Scene Synchronization & Render)
             scene_graph = agent_twin.sync_scene_state(
                 fused_pose, objects_state, lid_angle, agent_validation.current_step
@@ -514,9 +597,23 @@ def run_orchestrator(
 
             # AGENT 6: Validation Agent (Deterministic FSM + Adaptive Debounce + Local LLM Consensus)
             step, deb_count, anomaly, anomaly_msg, trans_event = agent_validation.evaluate_step(
-                objects_state, lid_angle, active_hoi, frame_id, llm_verification=llm_verif,
-                action_history=agent_har.action_history, astronaut_pose=fused_pose
+                objects_state, lid_angle, active_hoi, frame_id,
+                llm_verification=llm_verif,
+                action_history=agent_har.action_history,
+                astronaut_pose=fused_pose,
+                current_activity=current_activity
             )
+
+            # Preserve ongoing procedural step and reflect any detected non-procedural activity across attributes
+            is_cur_proc = any(stem in current_activity.upper() for stem in procedural_stems)
+            if not is_cur_proc and current_activity.upper() not in ("IDLE", "OBSERVING", "STANDBY", ""):
+                clean_act = current_activity.replace("_", " ").strip()
+                anomaly = AnomalyType.ERROR_SEQ
+                anomaly_msg = f"Warning: Wrong move! {clean_act} is not part of the procedure."
+                agent_validation.anomaly_status = AnomalyType.ERROR_SEQ
+                agent_validation.anomaly_message = anomaly_msg
+                agent_validation.is_step_correct = False
+                agent_validation.step_verdict = f"ANOMALY: {clean_act} [NOT IN PROCEDURE]"
 
             # AGENT 7: Reasoning & Guidance Agent (Next-step suggestions + Anomaly alerts)
             instruction, voice_alert = agent_reasoning.evaluate_guidance(

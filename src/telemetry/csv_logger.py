@@ -32,37 +32,37 @@ class RealtimeCSVTelemetryLogger:
         "step_id",
         "step_name",
         "activity",
-        "anomaly",
+        # "anomaly",
         "instruction",
         "lid_angle_deg",
         "lid_state",
-        "wrist_cam_x",
-        "wrist_cam_y",
-        "wrist_cam_z",
-        "wrist_rack_x",
-        "wrist_rack_y",
-        "wrist_rack_z",
-        "elbow_angle_deg",
-        "shoulder_angle_deg",
-        "body_orientation_deg",
-        "rom_violated",
-        "container_rack_x",
-        "container_rack_y",
-        "container_rack_z",
-        "container_xmin",
-        "container_ymin",
-        "container_xmax",
-        "container_ymax",
-        "component_rack_x",
-        "component_rack_y",
-        "component_rack_z",
-        "component_xmin",
-        "component_ymin",
-        "component_xmax",
-        "component_ymax",
+        # "wrist_cam_x",
+        # "wrist_cam_y",
+        # "wrist_cam_z",
+        # "wrist_rack_x",
+        # "wrist_rack_y",
+        # "wrist_rack_z",
+        # "elbow_angle_deg",
+        # "shoulder_angle_deg",
+        # "body_orientation_deg",
+        # "rom_violated",
+        # "container_rack_x",
+        # "container_rack_y",
+        # "container_rack_z",
+        # "container_xmin",
+        # "container_ymin",
+        # "container_xmax",
+        # "container_ymax",
+        # "component_rack_x",
+        # "component_rack_y",
+        # "component_rack_z",
+        # "component_xmin",
+        # "component_ymin",
+        # "component_xmax",
+        # "component_ymax",
         "component_state",
         "component_is_inside",
-        "hand_to_object_dist_m",
+        # "hand_to_object_dist_m",
         "llm_verified_step",
         "llm_verified_name",
         "llm_confidence",
@@ -112,14 +112,20 @@ class RealtimeCSVTelemetryLogger:
         fps: float,
         step: FSMStep,
         activity: str,
-        anomaly: AnomalyType,
-        instruction: str,
-        lid_angle: float,
-        pose: AstronautPose3D,
-        objects: Dict[str, ExperimentObject],
-        llm_verification: Optional[Dict[str, Any]] = None
+        anomaly: Optional[Any] = None,
+        instruction: str = "",
+        lid_angle: float = 0.0,
+        pose: Optional[AstronautPose3D] = None,
+        objects: Optional[Dict[str, ExperimentObject]] = None,
+        llm_verification: Optional[Dict[str, Any]] = None,
+        **kwargs
     ):
         """Writes a telemetry row capturing the complete spatial, physical, and LLM state of the frame."""
+        # Handle case where instruction was passed as 5th positional argument
+        if isinstance(anomaly, str) and not instruction:
+            instruction = anomaly
+            anomaly = kwargs.get("anomaly", None)
+
         now_time = time.time()
         elapsed_sec = round(now_time - self.start_time, 3)
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -130,25 +136,32 @@ class RealtimeCSVTelemetryLogger:
         # 2. Kinematics (Wrist / Elbow / Shoulder / ROM)
         wrist_cam = [0.0, 0.0, 0.0]
         wrist_rack = [0.0, 0.0, 0.0]
-        if "wrist" in pose.joints:
-            w_joint = pose.joints["wrist"]
-            wrist_cam = [round(w_joint.pos_camera.x, 3), round(w_joint.pos_camera.y, 3), round(w_joint.pos_camera.z, 3)]
-            wrist_rack = [round(w_joint.pos_rack.x, 3), round(w_joint.pos_rack.y, 3), round(w_joint.pos_rack.z, 3)]
-
-        elbow_deg = round(pose.elbow_angle_deg, 1)
-        shoulder_deg = round(pose.shoulder_angle_deg, 1)
-        body_orient = round(pose.body_orientation_deg, 1)
-        rom_flag = 1 if pose.rom_limits_violated else 0
+        elbow_deg = 0.0
+        shoulder_deg = 0.0
+        body_orient = 0.0
+        rom_flag = 0
+        if pose is not None:
+            if hasattr(pose, "joints") and "wrist" in pose.joints:
+                w_joint = pose.joints["wrist"]
+                if hasattr(w_joint, "pos_camera") and w_joint.pos_camera:
+                    wrist_cam = [round(w_joint.pos_camera.x, 3), round(w_joint.pos_camera.y, 3), round(w_joint.pos_camera.z, 3)]
+                if hasattr(w_joint, "pos_rack") and w_joint.pos_rack:
+                    wrist_rack = [round(w_joint.pos_rack.x, 3), round(w_joint.pos_rack.y, 3), round(w_joint.pos_rack.z, 3)]
+            elbow_deg = round(getattr(pose, "elbow_angle_deg", 0.0), 1)
+            shoulder_deg = round(getattr(pose, "shoulder_angle_deg", 0.0), 1)
+            body_orient = round(getattr(pose, "body_orientation_deg", 0.0), 1)
+            rom_flag = 1 if getattr(pose, "rom_limits_violated", False) else 0
 
         # 3. Container Box Coordinates & Bounding Box
         cont_x, cont_y, cont_z = 0.0, 0.0, 0.0
         cont_x1, cont_y1, cont_x2, cont_y2 = 0.0, 0.0, 0.0, 0.0
-        if "container_box" in objects:
+        if objects and "container_box" in objects:
             c_obj = objects["container_box"]
-            cont_x = round(c_obj.pos_rack.x, 3)
-            cont_y = round(c_obj.pos_rack.y, 3)
-            cont_z = round(c_obj.pos_rack.z, 3)
-            if c_obj.bbox:
+            if hasattr(c_obj, "pos_rack") and c_obj.pos_rack:
+                cont_x = round(c_obj.pos_rack.x, 3)
+                cont_y = round(c_obj.pos_rack.y, 3)
+                cont_z = round(c_obj.pos_rack.z, 3)
+            if hasattr(c_obj, "bbox") and c_obj.bbox:
                 cont_x1 = round(c_obj.bbox.xmin, 1)
                 cont_y1 = round(c_obj.bbox.ymin, 1)
                 cont_x2 = round(c_obj.bbox.xmax, 1)
@@ -161,26 +174,34 @@ class RealtimeCSVTelemetryLogger:
         comp_is_inside = 1
         comp_dist = 0.50
 
-        if "component_box" in objects:
-            item = objects["component_box"]
-            comp_x = round(item.pos_rack.x, 3)
-            comp_y = round(item.pos_rack.y, 3)
-            comp_z = round(item.pos_rack.z, 3)
-            if item.bbox:
-                comp_x1 = round(item.bbox.xmin, 1)
-                comp_y1 = round(item.bbox.ymin, 1)
-                comp_x2 = round(item.bbox.xmax, 1)
-                comp_y2 = round(item.bbox.ymax, 1)
-            comp_state = item.state.value if isinstance(item.state, EntityState) else str(item.state)
-            comp_is_inside = 1 if item.is_inside_container else 0
+        if objects:
+            item = None
+            for key in ["component_box", "red_box", "yellow_box"]:
+                if key in objects:
+                    item = objects[key]
+                    break
+            if item is not None:
+                if hasattr(item, "pos_rack") and item.pos_rack:
+                    comp_x = round(item.pos_rack.x, 3)
+                    comp_y = round(item.pos_rack.y, 3)
+                    comp_z = round(item.pos_rack.z, 3)
+                if hasattr(item, "bbox") and item.bbox:
+                    comp_x1 = round(item.bbox.xmin, 1)
+                    comp_y1 = round(item.bbox.ymin, 1)
+                    comp_x2 = round(item.bbox.xmax, 1)
+                    comp_y2 = round(item.bbox.ymax, 1)
+                if hasattr(item, "state"):
+                    comp_state = item.state.value if isinstance(item.state, EntityState) else str(item.state)
+                if hasattr(item, "is_inside_container"):
+                    comp_is_inside = 1 if item.is_inside_container else 0
 
-            # Distance from wrist to component object
-            if "wrist" in pose.joints:
-                comp_dist = round(pose.joints["wrist"].pos_rack.distance_to(item.pos_rack), 3)
+                # Distance from wrist to component object
+                if pose and hasattr(pose, "joints") and "wrist" in pose.joints and hasattr(item, "pos_rack") and item.pos_rack:
+                    comp_dist = round(pose.joints["wrist"].pos_rack.distance_to(item.pos_rack), 3)
 
         # 5. Local LLM Step Verification Channels
-        llm_step = int(step)
-        llm_name = step.name
+        llm_step = int(step) if step is not None else 0
+        llm_name = step.name if hasattr(step, "name") else str(step) if step is not None else ""
         llm_conf = 1.0
         llm_reason = "Deterministic validation consensus."
         if llm_verification:
@@ -189,36 +210,54 @@ class RealtimeCSVTelemetryLogger:
             llm_conf = round(float(llm_verification.get("confidence", 0.9)), 2)
             llm_reason = str(llm_verification.get("reason", llm_reason))
 
-        row = [
-            frame_id,
-            elapsed_sec,
-            now_iso,
-            round(fps, 1),
-            int(step),
-            step.name,
-            activity,
-            anomaly.value,
-            instruction,
-            round(lid_angle, 1),
-            lid_state,
-            wrist_cam[0], wrist_cam[1], wrist_cam[2],
-            wrist_rack[0], wrist_rack[1], wrist_rack[2],
-            elbow_deg,
-            shoulder_deg,
-            body_orient,
-            rom_flag,
-            cont_x, cont_y, cont_z,
-            cont_x1, cont_y1, cont_x2, cont_y2,
-            comp_x, comp_y, comp_z,
-            comp_x1, comp_y1, comp_x2, comp_y2,
-            comp_state,
-            comp_is_inside,
-            comp_dist,
-            llm_step,
-            llm_name,
-            llm_conf,
-            llm_reason
-        ]
+        anomaly_val = anomaly.value if hasattr(anomaly, "value") else str(anomaly) if anomaly is not None else "NONE"
+
+        field_map = {
+            "frame_id": frame_id,
+            "timestamp_sec": elapsed_sec,
+            "timestamp_iso": now_iso,
+            "fps": round(fps, 1),
+            "step_id": int(step) if step is not None else 0,
+            "step_name": step.name if hasattr(step, "name") else str(step) if step is not None else "",
+            "activity": activity,
+            "anomaly": anomaly_val,
+            "instruction": instruction,
+            "lid_angle_deg": round(lid_angle, 1),
+            "lid_state": lid_state,
+            "wrist_cam_x": wrist_cam[0],
+            "wrist_cam_y": wrist_cam[1],
+            "wrist_cam_z": wrist_cam[2],
+            "wrist_rack_x": wrist_rack[0],
+            "wrist_rack_y": wrist_rack[1],
+            "wrist_rack_z": wrist_rack[2],
+            "elbow_angle_deg": elbow_deg,
+            "shoulder_angle_deg": shoulder_deg,
+            "body_orientation_deg": body_orient,
+            "rom_violated": rom_flag,
+            "container_rack_x": cont_x,
+            "container_rack_y": cont_y,
+            "container_rack_z": cont_z,
+            "container_xmin": cont_x1,
+            "container_ymin": cont_y1,
+            "container_xmax": cont_x2,
+            "container_ymax": cont_y2,
+            "component_rack_x": comp_x,
+            "component_rack_y": comp_y,
+            "component_rack_z": comp_z,
+            "component_xmin": comp_x1,
+            "component_ymin": comp_y1,
+            "component_xmax": comp_x2,
+            "component_ymax": comp_y2,
+            "component_state": comp_state,
+            "component_is_inside": comp_is_inside,
+            "hand_to_object_dist_m": comp_dist,
+            "llm_verified_step": llm_step,
+            "llm_verified_name": llm_name,
+            "llm_confidence": llm_conf,
+            "llm_reason": llm_reason,
+        }
+
+        row = [field_map.get(col, "") for col in self.CSV_HEADER]
 
         # Write to primary archival CSV
         self._writer.writerow(row)

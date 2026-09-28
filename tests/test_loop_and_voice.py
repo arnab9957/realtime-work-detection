@@ -38,7 +38,8 @@ def test_loop_restart_and_voice():
         vlm.reset()
         bb.reset()
 
-    cap = cv2.VideoCapture("red_yellow.mp4")
+    video_path = "red_yellow.mp4" if os.path.exists("red_yellow.mp4") else "c1.mp4"
+    cap = cv2.VideoCapture(video_path)
     print("=== SIMULATING CYCLE 1 (180 frames) ===")
     c1_transitions = []
     for f in range(1, 181):

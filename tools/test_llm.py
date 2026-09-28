@@ -11,7 +11,7 @@ def test_ollama():
     
     # 1. Simple text test to see if service is up
     test_data = {
-        "model": "qwen3-vl:2b-instruct",
+        "model": "qwen2.5:3b",
         "prompt": "Say 'hello world' if you can read this.",
         "stream": False
     }
