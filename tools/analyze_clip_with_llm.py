@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.core.types import FSMStep, AnomalyType
 
+## Here we are setting the path for the viedeo feed 
 
 def inspect_video(video_path: str):
     """Gathers ground-truth visual and temporal metrics from the video file."""

@@ -11,6 +11,8 @@ Autonomous, offline, on-board Artificial Intelligence assistant designed to trac
 🔗 **Models & Datasets:** [Download from Google Drive](https://drive.google.com/drive/folders/1hmQtozWXRaKYXdwgt94y_2JO5p8CK1Yu?usp=sharing)
 
 ---
+We have performed all under mention operations with no dedicated GPU and purely based on CPU performance. 
+If you can use a dedicated GPU to run this project you will get more FPS.
 
 ## 🤯 Quick Guide: How to Train for a New Experiment
 
@@ -133,18 +135,41 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 ```
 
+> [!TIP]
+> Once both terminals are running, open your web browser to **`http://localhost:5173/`**. The frontend automatically connects to the backend streaming at `http://localhost:8080/` to display live camera feeds, 3D digital twins, telemetry, and FSM checklists.
+
+---
+
+### 📦 Frontend Project Commands (`npm`)
+
+All frontend commands should be executed from within the [`frontend/`]
+directory:
+
 ```bash
-# Linux / macOS
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Navigate to the frontend directory
+cd frontend
+
+# 1. Install all required dependencies (React 19, Vite, Tailwind CSS v4, Lucide icons, Three.js)
+npm install
+
+# 2. Start the local Vite development server with Hot Module Replacement (HMR)
+npm run dev
+
+# 3. Build the production-optimized static bundle into frontend/dist/
+npm run build
+
+# 4. Preview the production build locally (before deployment)
+npm run preview
+
+# 5. Run static lint checks using Oxlint
+npm run lint
 ```
 
 ### 1. Run the Multi-Agent System (Default Simulation Video)
 ```bash
 python main.py
 ```
-* Runs the full 8-agent pipeline at **80+ FPS**.
+* Runs the full 8-agent pipeline at **20+ FPS**.
 * Serves the live web dashboard at: `http://localhost:8080/`
 * Speaks voice guidance and alerts via Windows offline SAPI TTS.
 * Automatically records local MP4 video and structured `.jsonl` telemetry.
@@ -153,6 +178,7 @@ python main.py
 ```bash
 python main.py --source 0
 ```
+* Ingests live video from default USB/laptop camera `#0` for interactive testing.
 
 ### 3. Run with Native Desktop Tkinter GUI
 ```bash
@@ -259,11 +285,14 @@ realtime-work-detection/
 
 ## 7. Example of Human and Object Detection
 
+In general we are generating human mess recovery using the telimentry data from the live video feed .
+
 ### RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos
 
 In space station laboratory environments (such as BAS-03/BAS-04), astronauts frequently handle both standardized and novel scientific payloads, tools, and containers under zero-gravity dynamics. Because multi-camera rigs and bulky LiDAR hardware impose prohibitive launch weight and power burdens, our system adapts the state-of-the-art **RHINO** paradigm: jointly reconstructing 3D human body mesh, hand articulation, and novel object geometry directly from **monocular RGB video**.
 
 Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship & Structure Detection (RelSGG)**, this framework enables contact-aware, metric spatial understanding and real-time Digital Twin synchronization.
+
 
 ---
 
@@ -320,10 +349,6 @@ Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship &
   </tr>
 </table>
 
-> [!TIP]
-> **Playback & Compatibility:**
-> - The live animated previews above play automatically using lightweight GIFs ([`hmr_demonstration.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/hmr_demonstration.gif) & [`structure_detection_demo.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/structure_detection_demo.gif)), guaranteeing instant, 100% zero-click rendering on GitHub, VS Code, and mobile browsers.
-> - Clicking directly on either preview or the download link opens the full 1080p source MP4 video.
 
 ---
 
@@ -349,14 +374,32 @@ flowchart TD
 
 #### 1. RHINO Monocular Interaction Reconstruction
 * **Novel Object Generalization:** Unlike closed-set detectors that only recognize pre-trained categories, RHINO models unseen geometry, estimating 3D bounding primitives and shape deformations for arbitrary laboratory apparatus.
-* **Physics & Contact Consistency:** Simultaneously optimizes human pose parameters $\mathbf{\theta}_{\text{body}}$, hand shape $\mathbf{\beta}$, and object pose $\mathbf{T}_{\text{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration losses:
-  $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{reproj}} + \lambda_{\text{contact}} \mathcal{L}_{\text{contact}} + \lambda_{\text{pen}} \mathcal{L}_{\text{penetration}} + \lambda_{\text{smooth}} \mathcal{L}_{\text{temporal}}$$
-* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using extrinsics $[\mathbf{R}_{\text{ext}} \mid \mathbf{T}_{\text{ext}}]$, calculating millimeter-accurate distances between astronaut fingertips and experiment handles.
+* **Physics & Contact Consistency:** Simultaneously optimizes human pose parameters $\boldsymbol{\theta}_{\mathrm{body}}$, hand shape $\boldsymbol{\beta}$, and object pose $\mathbf{T}_{\mathrm{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration losses:
 
-#### 2. Structure Detection & Scene Graph Generation (RelSGG)
+$$
+\mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{reproj}} + \lambda_{\mathrm{contact}}\mathcal{L}_{\mathrm{contact}} + \lambda_{\mathrm{pen}}\mathcal{L}_{\mathrm{penetration}} + \lambda_{\mathrm{smooth}}\mathcal{L}_{\mathrm{temporal}}
+$$
+
+* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using extrinsics $[\mathbf{R}_{\mathrm{ext}} \mid \mathbf{T}_{\mathrm{ext}}]$, calculating millimeter-accurate distances between astronaut fingertips and experiment handles:
+
+$$
+\mathbf{P}_{\mathcal{R}} = \mathbf{R}_{\mathrm{ext}} \cdot \mathbf{P}_{\mathcal{C}} + \mathbf{T}_{\mathrm{ext}}
+$$
+
+  This enables calculating millimeter-accurate Euclidean clearances between astronaut fingertips and experiment handles without requiring active LiDAR sensors.
+
+#### 2. Structure Detection & AgentSTAR Scene Graph Generation (RelSGG)
 * **Visual Relationship Modeling (`maelic/relsgg-vits16plus`):** Uses vision transformers to evaluate pairwise spatial and semantic interactions across detected entities.
 * **Dynamic Triplet Extraction:** Periodically evaluates workspace state:
-  $$\langle \text{operator\_hand} \xrightarrow{\text{touching}} \text{container\_lid} \rangle \quad\longrightarrow\quad \langle \text{red\_box} \xrightarrow{\text{extracted from}} \text{container\_box} \rangle$$
+
+$$
+\langle \text{operator\_hand} \xrightarrow{\text{touching}} \text{container\_lid} \rangle \quad\longrightarrow\quad \langle \text{red\_box} \xrightarrow{\text{extracted from}} \text{container\_box} \rangle
+$$
+
+$$
+\mathcal{T}_{\mathrm{state}} = \left\langle \text{Subject} \xrightarrow{\text{Predicate}} \text{Object} \right\rangle
+$$
+
 * **FSM Protocol Enforcement:** Triplets are written directly to the thread-safe **Digital Twin Memory Blackboard** (`src/core/shared_memory.py`), triggering deterministic procedural transitions or urgent spoken voice alerts (`ERROR_SEQ`, `ERROR_SKIP`) when anomalies occur.
 
 ---
@@ -365,39 +408,6 @@ flowchart TD
 
 The system features a custom mission-grade ground and on-board console located in the [`frontend/`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/) directory. Built with **React 19, TypeScript, Vite, and Tailwind CSS v4**, the interface mirrors real space telemetry dashboards deployed for ISRO flight monitoring.
 
-### 🖥️ Frontend Component Overview
-
-```
-frontend/src/
-├── components/
-│   ├── Header/             # Mission identity ("Sitara"), live connection heartbeat, status chips
-│   ├── Camera1/            # Primary HAR viewport (Live MJPEG feed, 2D/3D overlays, step metrics)
-│   ├── Camera2/            # Secondary 3D Digital Twin viewport (Synchronized simulation stream)
-│   ├── ProcessTimeline/    # Dynamic procedural checklist, progress bar & human consent controls
-│   ├── AnomalyDetection/   # Autonomous warning engine, Web Speech API TTS & incident history
-│   ├── Logs/               # Filterable real-time system event & telemetry terminal
-│   ├── StarField/          # Ambient space orbital canvas particle background
-│   └── common/             # SmoothNumber, AnimatedText & HumanConsentModal components
-├── hooks/
-│   ├── useTelemetry.ts     # 25 Hz non-blocking telemetry polling with request deduplication
-│   ├── useDigitalTwin.ts   # 10 Hz 3D entity & joint coordinate synchronization
-│   └── useSessionActions.ts# Timeline ledger & compliance history synchronization
-├── services/
-│   └── api.ts              # Centralized Python backend endpoint contracts (Port 8080)
-└── types/
-    └── api.ts              # Strongly typed mirror of Python telemetry & blackboard dataclasses
-```
-
-* **Camera 01 Panel (`Camera1.tsx`)**: Streams real-time annotated video (`/stream`) with zero-latency HTML5 image rendering. If connection drops, it automatically falls back to an off-screen double-buffered snapshot polling mechanism (`/snapshot`) to prevent black screen flicker. Displays tabular FPS and latency counters, step verdicts (*Nominal* vs *Deviation*), and a 4-field contextual information strip:
-  - *Previous Step*: Context of completed action.
-  - *Current Action*: Live detected astronaut state (`what_i_am_doing`).
-  - *Expected Next*: Proactive guidance instruction (`what_i_have_to_do`).
-  - *Step Status*: Debounced validation indicator.
-* **Camera 02 Panel (`Camera2.tsx`)**: Displays the parallel 3D Digital Twin simulation stream (`/twin_stream`) providing third-person spatial awareness of the science rack.
-* **Process Timeline Panel (`ProcessTimeline.tsx`)**: Auto-scrolling procedure step tracker showing the deterministic progress of the Finite State Machine (FSM). Features an interactive **Human Consent Modal** allowing ground operators to execute critical overrides: `Start`, `Pause`, `Reset`, video source switching, and protocol selection.
-* **Anomaly Surveillance Panel (`AnomalyDetection.tsx`)**: Listens to blackboard anomaly codes (`ERROR_SEQ`, `ERROR_SKIP`). When triggered, it flashes high-priority visual alarms, speaks synthetic voice alerts using the browser's native **Web Speech Synthesis API**, and logs the incident to the audit ledger.
-
----
 
 ### 🔗 Bi-Directional Python Pipeline Integration
 
