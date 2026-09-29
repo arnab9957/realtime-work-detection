@@ -184,16 +184,20 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ## 5. Repository Layout
 
 ```
-e:\SIH\
+realtime-work-detection/
 ├── configs/
 │   ├── experiment_fsm.json        # FSM state definitions, debouncing rules & spoken prompts
 │   └── camera_calib.json          # Intrinsics K and extrinsic transform [R | T] to Rack Frame R
+├── docs/
+│   ├── videos/                    # Demonstration video assets (HMR & Structure Detection)
+│   ├── BAS_SYSTEM_DOCUMENTATION.pdf
+│   └── system_documentation.md
 ├── src/
 │   ├── core/
-│   │   ├── types.py               # Shared data contracts (Vector3D, BBox2D, HOIInteraction)
+│   │   ├── types.py               # Shared data contracts (Vector3D, BBox2D, HOIInteraction, Relation)
 │   │   └── shared_memory.py       # Thread-safe Digital Twin Blackboard memory
 │   ├── agents/
-│   │   ├── perception_agent.py    # YOLOv8n + PhysAstro-Pose HMR runner
+│   │   ├── perception_agent.py    # YOLOv8 + PhysAstro-Pose HMR + RelSGG scene graph engine
 │   │   ├── imu_agent.py           # 128Hz IMU ingestion, ZUPT & synthetic kinematics
 │   │   ├── fusion_agent.py        # Constrained UKF + Biomechanical ROM boundary projection
 │   │   ├── har_agent.py           # AdaSpot RoI cropper + HOI metrics (Approach, Grasp, Extract)
@@ -201,6 +205,8 @@ e:\SIH\
 │   │   ├── validation_agent.py    # Authoritative deterministic FSM validator (15-frame debounce)
 │   │   ├── reasoning_agent.py     # Procedural guidance, context generator & recovery planner
 │   │   └── monitoring_agent.py    # Dual video, offline TTS, JSONL telemetry & GUI coordinator
+│   ├── multihmr2/                 # Multi-HMR 2: Multi-person 3D Human Mesh Recovery pipeline
+│   ├── ml_distance/               # Metric 3D distance and closest-grid computation
 │   ├── audio/
 │   │   └── offline_tts.py         # Sub-100ms non-blocking offline speech synthesizer
 │   ├── streaming/
@@ -211,6 +217,7 @@ e:\SIH\
 │       ├── mission_gui.py         # Native Tkinter spaceflight mission control dashboard
 │       └── web_twin/
 │           └── index.html         # Modern web-based Mission Control & 3D Digital Twin console
+├── relsgg/                        # Visual Relationship & Structure Detection (Scene Graph Generation)
 ├── tools/
 │   ├── generate_synthetic_data.py # Procedural 3D microgravity dataset generator & animator
 │   └── webcam_annotator.py        # Interactive webcam recorder with color-assisted annotation
@@ -231,3 +238,103 @@ e:\SIH\
 * **Flight Target Hardware**: Dual-compute architecture pairing the **NVIDIA Jetson Orin NX (10–25W)** for vision/HMR inference with the **NASA/Microchip PIC64-HPSC (RISC-V)** executing the deterministic FSM and telemetry serializer in an isolated RTOS partition (VxWorks / WorldGuard).
 * **Thermal Dissipation**: Conduction-cooled baseplate connected to the BAS-03 laboratory liquid loop.
 * **Telemetry Heritage**: Built upon ISRO POEM-4 flight heritage (MOI-TD on-orbit AI lab and RRM-TD robotic arm vision).
+
+## 7. Example of Human and Object Detection
+
+### RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos
+
+In space station laboratory environments (such as BAS-03/BAS-04), astronauts frequently handle both standardized and novel scientific payloads, tools, and containers under zero-gravity dynamics. Because multi-camera rigs and bulky LiDAR hardware impose prohibitive launch weight and power burdens, our system adapts the state-of-the-art **RHINO** paradigm: jointly reconstructing 3D human body mesh, hand articulation, and novel object geometry directly from **monocular RGB video**.
+
+Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship & Structure Detection (RelSGG)**, this framework enables contact-aware, metric spatial understanding and real-time Digital Twin synchronization.
+
+---
+
+### 🎥 Visual Demonstrations: 3D HMR & Structure Detection
+
+<table align="center" width="100%">
+  <tr>
+    <th align="center" width="50%">
+      <h4>📹 Video 1: 3D Human Mesh Recovery (Multi-HMR & RHINO)</h4>
+      <sub>Monocular 3D Human Body Mesh, Joint Articulation & Object Contact Modeling</sub>
+    </th>
+    <th align="center" width="50%">
+      <h4>📹 Video 2: Scene Structure & Relationship Detection (RelSGG)</h4>
+      <sub>Hierarchical Hardware Parsing & Dynamic Relationship Triplet Extraction</sub>
+    </th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <!-- To embed your video: place file in docs/videos/hmr_demonstration.mp4 or paste GitHub asset link -->
+      <video src="docs/videos/hmr_demonstration.mp4" controls width="100%" poster="docs/image.png">
+        <p>Your browser does not support HTML5 video. View the file directly: <a href="docs/videos/hmr_demonstration.mp4"><code>docs/videos/hmr_demonstration.mp4</code></a></p>
+      </video>
+      <br>
+      <sub>▶️ <i>Full 3D joint kinematic estimation and dense surface mesh tracking in microgravity.</i></sub>
+    </td>
+    <td align="center" valign="top">
+      <!-- To embed your video: place file in docs/videos/structure_detection_demo.mp4 or paste GitHub asset link -->
+      <video src="docs/videos/structure_detection_demo.mp4" controls width="100%" poster="docs/image.png">
+        <p>Your browser does not support HTML5 video. View the file directly: <a href="docs/videos/structure_detection_demo.mp4"><code>docs/videos/structure_detection_demo.mp4</code></a></p>
+      </video>
+      <br>
+      <sub>▶️ <i>Real-time visual relationship graph [Subject &rarr; Predicate &rarr; Object] predicting task topology.</i></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="left" valign="top">
+      <b>Core Technical Capabilities:</b>
+      <ul>
+        <li><b>Monocular 4D Reconstruction:</b> Recovers temporally consistent 3D human kinematics and object meshes without active depth sensors.</li>
+        <li><b>Zero-G Orientation Decoupling:</b> Canonical Orientation Constraints (COC) neutralize arbitrary body roll/pitch/yaw during microgravity floating.</li>
+        <li><b>Contact-Guided Optimization:</b> Penetration penalties and contact priors guarantee physically plausible hand-object grasping.</li>
+      </ul>
+    </td>
+    <td align="left" valign="top">
+      <b>Core Technical Capabilities:</b>
+      <ul>
+        <li><b>Hierarchical Hardware Decomposition:</b> Breaks scientific apparatus into sub-elements (rack, container base, lid, payloads).</li>
+        <li><b>Dynamic Scene Graph Generation:</b> RelSGG vision backbone extracts real-time triplets (<code>hand touching lid</code>, <code>box inside container</code>).</li>
+        <li><b>Deterministic Gating:</b> Extracted visual predicates drive the FSM Validation Agent to verify mission protocol and flag sequence errors.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+> [!TIP]
+> **Video File Setup:**
+> - **Local repository files:** Drop your 2 video files into [`docs/videos/`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/) as `hmr_demonstration.mp4` and `structure_detection_demo.mp4`.
+> - **GitHub Asset URLs:** Or drag & drop your video files into any GitHub comment/issue to obtain `https://github.com/user-attachments/assets/...` links and replace the `src="..."` attributes in lines above.
+
+---
+
+### 🔄 RHINO & Structure Detection Pipeline
+
+```mermaid
+flowchart TD
+    A["Monocular Video Stream (RGB Camera)"] --> B["Perception Agent"]
+    B --> C["RHINO & Multi-HMR Pipeline<br/>(3D Human Mesh + Novel Object Reconstruction)"]
+    B --> D["RelSGG Structure Detection<br/>(Dynamic Scene Graph Generation)"]
+    C --> E["Metric 3D Spatial Distance & Contact Estimation"]
+    D --> F["Semantic Relationship Triplets<br/>(e.g., hand touching lid, box inside container)"]
+    E --> G["Shared Digital Twin Memory Blackboard"]
+    F --> G
+    G --> H["Deterministic Validation Agent (FSM)"]
+    H --> I["Real-Time 3D Digital Twin GUI"]
+    H --> J["Proactive Guidance & Offline Audio Alerts"]
+```
+
+---
+
+### 🔬 Technical Deep-Dive
+
+#### 1. RHINO Monocular Interaction Reconstruction
+* **Novel Object Generalization:** Unlike closed-set detectors that only recognize pre-trained categories, RHINO models unseen geometry, estimating 3D bounding primitives and shape deformations for arbitrary laboratory apparatus.
+* **Physics & Contact Consistency:** Simultaneously optimizes human pose parameters $\mathbf{\theta}_{\text{body}}$, hand shape $\mathbf{\beta}$, and object pose $\mathbf{T}_{\text{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration losses:
+  $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{reproj}} + \lambda_{\text{contact}} \mathcal{L}_{\text{contact}} + \lambda_{\text{pen}} \mathcal{L}_{\text{penetration}} + \lambda_{\text{smooth}} \mathcal{L}_{\text{temporal}}$$
+* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using extrinsics $[\mathbf{R}_{\text{ext}} \mid \mathbf{T}_{\text{ext}}]$, calculating millimeter-accurate distances between astronaut fingertips and experiment handles.
+
+#### 2. Structure Detection & Scene Graph Generation (RelSGG)
+* **Visual Relationship Modeling (`maelic/relsgg-vits16plus`):** Uses vision transformers to evaluate pairwise spatial and semantic interactions across detected entities.
+* **Dynamic Triplet Extraction:** Periodically evaluates workspace state:
+  $$\langle \text{operator\_hand} \xrightarrow{\text{touching}} \text{container\_lid} \rangle \quad\longrightarrow\quad \langle \text{red\_box} \xrightarrow{\text{extracted from}} \text{container\_box} \rangle$$
+* **FSM Protocol Enforcement:** Triplets are written directly to the thread-safe **Digital Twin Memory Blackboard** (`src/core/shared_memory.py`), triggering deterministic procedural transitions or urgent spoken voice alerts (`ERROR_SEQ`, `ERROR_SKIP`) when anomalies occur.
