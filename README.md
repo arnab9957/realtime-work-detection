@@ -11,6 +11,8 @@ Autonomous, offline, on-board Artificial Intelligence assistant designed to trac
 🔗 **Models & Datasets:** [Download from Google Drive](https://drive.google.com/drive/folders/1hmQtozWXRaKYXdwgt94y_2JO5p8CK1Yu?usp=sharing)
 
 ---
+We have performed all under mention operations with no dedicated GPU and purely based on CPU performance. 
+If you can use a dedicated GPU to run this project you will get more FPS.
 
 ## 🤯 Quick Guide: How to Train for a New Experiment
 
@@ -167,7 +169,7 @@ npm run lint
 ```bash
 python main.py
 ```
-* Runs the full 8-agent pipeline at **80+ FPS**.
+* Runs the full 8-agent pipeline at **20+ FPS**.
 * Serves the live web dashboard at: `http://localhost:8080/`
 * Speaks voice guidance and alerts via Windows offline SAPI TTS.
 * Automatically records local MP4 video and structured `.jsonl` telemetry.
@@ -347,10 +349,6 @@ Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship &
   </tr>
 </table>
 
-> [!TIP]
-> **Playback & Compatibility:**
-> - The live animated previews above play automatically using lightweight GIFs ([`hmr_demonstration.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/hmr_demonstration.gif) & [`structure_detection_demo.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/structure_detection_demo.gif)), guaranteeing instant, 100% zero-click rendering on GitHub, VS Code, and mobile browsers.
-> - Clicking directly on either preview or the download link opens the full 1080p source MP4 video.
 
 ---
 
@@ -376,13 +374,13 @@ flowchart TD
 
 #### 1. RHINO Monocular Interaction Reconstruction
 * **Novel Object Generalization:** Unlike closed-set detectors that only recognize pre-trained categories, RHINO models unseen geometry, estimating 3D bounding primitives and shape deformations for arbitrary laboratory apparatus.
-* **Physics & Contact Consistency:** Simultaneously optimizes human body pose $\boldsymbol{\theta}_{\mathrm{body}}$, hand articulation $\boldsymbol{\beta}$, and 3D object pose $\mathbf{T}_{\mathrm{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration penalties:
+* **Physics & Contact Consistency:** Simultaneously optimizes human pose parameters $\boldsymbol{\theta}_{\mathrm{body}}$, hand shape $\boldsymbol{\beta}$, and object pose $\mathbf{T}_{\mathrm{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration losses:
 
 $$
 \mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{reproj}} + \lambda_{\mathrm{contact}}\mathcal{L}_{\mathrm{contact}} + \lambda_{\mathrm{pen}}\mathcal{L}_{\mathrm{penetration}} + \lambda_{\mathrm{smooth}}\mathcal{L}_{\mathrm{temporal}}
 $$
 
-* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using calibrated extrinsic parameters $[\mathbf{R}_{\mathrm{ext}} \mid \mathbf{T}_{\mathrm{ext}}]$:
+* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using extrinsics $[\mathbf{R}_{\mathrm{ext}} \mid \mathbf{T}_{\mathrm{ext}}]$, calculating millimeter-accurate distances between astronaut fingertips and experiment handles:
 
 $$
 \mathbf{P}_{\mathcal{R}} = \mathbf{R}_{\mathrm{ext}} \cdot \mathbf{P}_{\mathcal{C}} + \mathbf{T}_{\mathrm{ext}}
@@ -392,11 +390,11 @@ $$
 
 #### 2. Structure Detection & AgentSTAR Scene Graph Generation (RelSGG)
 * **Visual Relationship Modeling (`maelic/relsgg-vits16plus`):** Uses vision transformers to evaluate pairwise spatial and semantic interactions across detected entities.
-* **Dynamic Triplet Extraction:** Periodically evaluates workspace state into verified subject-predicate-object semantic graphs:
+* **Dynamic Triplet Extraction:** Periodically evaluates workspace state:
 
-```text
-⟨operator_hand ──[touching]──► container_lid⟩  ──►  ⟨red_box ──[extracted_from]──► container_box⟩
-```
+$$
+\langle \text{operator\_hand} \xrightarrow{\text{touching}} \text{container\_lid} \rangle \quad\longrightarrow\quad \langle \text{red\_box} \xrightarrow{\text{extracted from}} \text{container\_box} \rangle
+$$
 
 $$
 \mathcal{T}_{\mathrm{state}} = \left\langle \text{Subject} \xrightarrow{\text{Predicate}} \text{Object} \right\rangle
