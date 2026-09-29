@@ -10,6 +10,8 @@
         self.assertEqual(anomaly, AnomalyType.ERROR_SEQ)
         self.assertIn("Forbidden action", msg)
 
+    ## The test is a bit slow because it sleeps for 35 seconds to simulate a timeout. You can reduce the sleep time in the test if you want faster execution, but make sure to adjust the timeout values accordingly in the FSM configuration.
+    
     def test_per_step_stall_timeout(self):
         val = ValidationAgent(config_path="configs/experiment_fsm.json")
         val.current_step = FSMStep.CONTAINER_OPEN  # step 1 timeout is 30s

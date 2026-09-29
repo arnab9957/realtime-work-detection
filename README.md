@@ -285,7 +285,7 @@ realtime-work-detection/
 
 ## 7. Example of Human and Object Detection
 
-In general we are generating human mess recovery from the terlimentry data from the live video feed .
+In general we are generating human mess recovery using the telimentry data from the live video feed .
 
 ### RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos
 
