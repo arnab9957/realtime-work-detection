@@ -58,6 +58,11 @@ experiments/*.mp4
 experiments/*.avi
 clip1.mp4
 
+# Whitelist demonstration videos and preview assets for README
+!docs/videos/*.mp4
+!docs/videos/*.gif
+!docs/videos/.gitkeep
+
 # Generated Datasets & Raw Image Annotations
 dataset/
 data/

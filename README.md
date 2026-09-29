@@ -179,21 +179,35 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ```
 * Validates FSM 15-frame debouncing, anomaly gating, 3,000,000:1 telemetry ratio, and full multi-agent integration.
 
+### 7. Run Modern React + Vite Mission Control Dashboard
+In a separate terminal:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+* Serves the advanced React 19 + TypeScript Mission Control Console at: `http://localhost:5173/`
+* Seamlessly connects to the Python 8-agent backend pipelines running at `http://localhost:8080/`.
+
 ---
 
 ## 5. Repository Layout
 
 ```
-e:\SIH\
+realtime-work-detection/
 ├── configs/
 │   ├── experiment_fsm.json        # FSM state definitions, debouncing rules & spoken prompts
 │   └── camera_calib.json          # Intrinsics K and extrinsic transform [R | T] to Rack Frame R
+├── docs/
+│   ├── videos/                    # Demonstration video assets (HMR & Structure Detection)
+│   ├── BAS_SYSTEM_DOCUMENTATION.pdf
+│   └── system_documentation.md
 ├── src/
 │   ├── core/
-│   │   ├── types.py               # Shared data contracts (Vector3D, BBox2D, HOIInteraction)
+│   │   ├── types.py               # Shared data contracts (Vector3D, BBox2D, HOIInteraction, Relation)
 │   │   └── shared_memory.py       # Thread-safe Digital Twin Blackboard memory
 │   ├── agents/
-│   │   ├── perception_agent.py    # YOLOv8n + PhysAstro-Pose HMR runner
+│   │   ├── perception_agent.py    # YOLOv8 + PhysAstro-Pose HMR + RelSGG scene graph engine
 │   │   ├── imu_agent.py           # 128Hz IMU ingestion, ZUPT & synthetic kinematics
 │   │   ├── fusion_agent.py        # Constrained UKF + Biomechanical ROM boundary projection
 │   │   ├── har_agent.py           # AdaSpot RoI cropper + HOI metrics (Approach, Grasp, Extract)
@@ -201,6 +215,8 @@ e:\SIH\
 │   │   ├── validation_agent.py    # Authoritative deterministic FSM validator (15-frame debounce)
 │   │   ├── reasoning_agent.py     # Procedural guidance, context generator & recovery planner
 │   │   └── monitoring_agent.py    # Dual video, offline TTS, JSONL telemetry & GUI coordinator
+│   ├── multihmr2/                 # Multi-HMR 2: Multi-person 3D Human Mesh Recovery pipeline
+│   ├── ml_distance/               # Metric 3D distance and closest-grid computation
 │   ├── audio/
 │   │   └── offline_tts.py         # Sub-100ms non-blocking offline speech synthesizer
 │   ├── streaming/
@@ -211,6 +227,15 @@ e:\SIH\
 │       ├── mission_gui.py         # Native Tkinter spaceflight mission control dashboard
 │       └── web_twin/
 │           └── index.html         # Modern web-based Mission Control & 3D Digital Twin console
+├── relsgg/                        # Visual Relationship & Structure Detection (Scene Graph Generation)
+├── frontend/                      # Modern Mission Control Console (React 19 + TypeScript + Vite)
+│   ├── src/
+│   │   ├── components/            # Camera1 (HAR), Camera2 (Twin), Timeline, Anomaly, Logs
+│   │   ├── hooks/                 # useTelemetry (25Hz), useDigitalTwin (10Hz), useSessionActions
+│   │   ├── services/api.ts        # Python backend endpoint definitions (Port 8080)
+│   │   └── types/api.ts           # Shared data contracts (TelemetryData, DigitalTwinData)
+│   ├── package.json               # Frontend dependencies (Lucide, Tailwind CSS v4)
+│   └── vite.config.ts             # Vite build & proxy configuration
 ├── tools/
 │   ├── generate_synthetic_data.py # Procedural 3D microgravity dataset generator & animator
 │   └── webcam_annotator.py        # Interactive webcam recorder with color-assisted annotation
@@ -231,3 +256,211 @@ e:\SIH\
 * **Flight Target Hardware**: Dual-compute architecture pairing the **NVIDIA Jetson Orin NX (10–25W)** for vision/HMR inference with the **NASA/Microchip PIC64-HPSC (RISC-V)** executing the deterministic FSM and telemetry serializer in an isolated RTOS partition (VxWorks / WorldGuard).
 * **Thermal Dissipation**: Conduction-cooled baseplate connected to the BAS-03 laboratory liquid loop.
 * **Telemetry Heritage**: Built upon ISRO POEM-4 flight heritage (MOI-TD on-orbit AI lab and RRM-TD robotic arm vision).
+
+## 7. Example of Human and Object Detection
+
+### RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos
+
+In space station laboratory environments (such as BAS-03/BAS-04), astronauts frequently handle both standardized and novel scientific payloads, tools, and containers under zero-gravity dynamics. Because multi-camera rigs and bulky LiDAR hardware impose prohibitive launch weight and power burdens, our system adapts the state-of-the-art **RHINO** paradigm: jointly reconstructing 3D human body mesh, hand articulation, and novel object geometry directly from **monocular RGB video**.
+
+Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship & Structure Detection (RelSGG)**, this framework enables contact-aware, metric spatial understanding and real-time Digital Twin synchronization.
+
+---
+
+### 🎥 Visual Demonstrations: 3D HMR & Structure Detection
+
+<table align="center" width="100%">
+  <tr>
+    <th align="center" width="50%">
+      <h4>📹 Video 1: 3D Human Mesh Recovery (Multi-HMR & RHINO), RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos</h4>
+      <sub>Monocular 3D Human Body Mesh, Joint Articulation & Object Contact Modeling</sub>
+    </th>
+    <th align="center" width="50%">
+      <h4>📹 Video 2: AgentSTAR: Agentic Shape Tracking and Reconstruction from Monocular Videos".</h4>
+      <sub>Hierarchical Hardware Parsing & Dynamic Relationship Triplet Extraction</sub>
+    </th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/videos/hmr_demonstration.mp4">
+        <img src="docs/videos/hmr_demonstration.gif" width="100%" alt="3D Human Mesh Recovery Demo" />
+      </a>
+      <br>
+      <sub>▶️ <b>Live Preview:</b> <i>Full 3D joint kinematic estimation & dense surface mesh tracking in microgravity.</i></sub>
+      <br>
+      <small><a href="docs/videos/hmr_demonstration.mp4">📥 [Click here to view/download full HD MP4]</a></small>
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/videos/structure_detection_demo.mp4">
+        <img src="docs/videos/structure_detection_demo.gif" width="100%" alt="Scene Structure & Relationship Detection Demo" />
+      </a>
+      <br>
+      <sub>▶️ <b>Live Preview:</b> <i>Real-time visual relationship graph [Subject &rarr; Predicate &rarr; Object] predicting task topology.</i></sub>
+      <br>
+      <small><a href="docs/videos/structure_detection_demo.mp4">📥 [Click here to view/download full HD MP4]</a></small>
+    </td>
+  </tr>
+  <tr>
+    <td align="left" valign="top">
+      <b>Core Technical Capabilities:</b>
+      <ul>
+        <li><b>Monocular 4D Reconstruction:</b> Recovers temporally consistent 3D human kinematics and object meshes without active depth sensors.</li>
+        <li><b>Zero-G Orientation Decoupling:</b> Canonical Orientation Constraints (COC) neutralize arbitrary body roll/pitch/yaw during microgravity floating.</li>
+        <li><b>Contact-Guided Optimization:</b> Penetration penalties and contact priors guarantee physically plausible hand-object grasping.</li>
+      </ul>
+    </td>
+    <td align="left" valign="top">
+      <b>Core Technical Capabilities:</b>
+      <ul>
+        <li><b>Hierarchical Hardware Decomposition:</b> Breaks scientific apparatus into sub-elements (rack, container base, lid, payloads).</li>
+        <li><b>Dynamic Scene Graph Generation:</b> RelSGG vision backbone extracts real-time triplets (<code>hand touching lid</code>, <code>box inside container</code>).</li>
+        <li><b>Deterministic Gating:</b> Extracted visual predicates drive the FSM Validation Agent to verify mission protocol and flag sequence errors.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+> [!TIP]
+> **Playback & Compatibility:**
+> - The live animated previews above play automatically using lightweight GIFs ([`hmr_demonstration.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/hmr_demonstration.gif) & [`structure_detection_demo.gif`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/docs/videos/structure_detection_demo.gif)), guaranteeing instant, 100% zero-click rendering on GitHub, VS Code, and mobile browsers.
+> - Clicking directly on either preview or the download link opens the full 1080p source MP4 video.
+
+---
+
+### 🔄 RHINO & Structure Detection Pipeline
+
+```mermaid
+flowchart TD
+    A["Monocular Video Stream (RGB Camera)"] --> B["Perception Agent"]
+    B --> C["RHINO & Multi-HMR Pipeline<br/>(3D Human Mesh + Novel Object Reconstruction)"]
+    B --> D["RelSGG Structure Detection<br/>(Dynamic Scene Graph Generation)"]
+    C --> E["Metric 3D Spatial Distance & Contact Estimation"]
+    D --> F["Semantic Relationship Triplets<br/>(e.g., hand touching lid, box inside container)"]
+    E --> G["Shared Digital Twin Memory Blackboard"]
+    F --> G
+    G --> H["Deterministic Validation Agent (FSM)"]
+    H --> I["Real-Time 3D Digital Twin GUI"]
+    H --> J["Proactive Guidance & Offline Audio Alerts"]
+```
+
+---
+
+### 🔬 Technical Deep-Dive
+
+#### 1. RHINO Monocular Interaction Reconstruction
+* **Novel Object Generalization:** Unlike closed-set detectors that only recognize pre-trained categories, RHINO models unseen geometry, estimating 3D bounding primitives and shape deformations for arbitrary laboratory apparatus.
+* **Physics & Contact Consistency:** Simultaneously optimizes human pose parameters $\mathbf{\theta}_{\text{body}}$, hand shape $\mathbf{\beta}$, and object pose $\mathbf{T}_{\text{obj}}$ by minimizing 2D reprojection loss alongside contact attraction and mesh non-penetration losses:
+  $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{reproj}} + \lambda_{\text{contact}} \mathcal{L}_{\text{contact}} + \lambda_{\text{pen}} \mathcal{L}_{\text{penetration}} + \lambda_{\text{smooth}} \mathcal{L}_{\text{temporal}}$$
+* **Metric Distance Transformation:** Transforms camera-centric coordinates $\mathcal{C}$ into station rack frame $\mathcal{R}$ using extrinsics $[\mathbf{R}_{\text{ext}} \mid \mathbf{T}_{\text{ext}}]$, calculating millimeter-accurate distances between astronaut fingertips and experiment handles.
+
+#### 2. Structure Detection & Scene Graph Generation (RelSGG)
+* **Visual Relationship Modeling (`maelic/relsgg-vits16plus`):** Uses vision transformers to evaluate pairwise spatial and semantic interactions across detected entities.
+* **Dynamic Triplet Extraction:** Periodically evaluates workspace state:
+  $$\langle \text{operator\_hand} \xrightarrow{\text{touching}} \text{container\_lid} \rangle \quad\longrightarrow\quad \langle \text{red\_box} \xrightarrow{\text{extracted from}} \text{container\_box} \rangle$$
+* **FSM Protocol Enforcement:** Triplets are written directly to the thread-safe **Digital Twin Memory Blackboard** (`src/core/shared_memory.py`), triggering deterministic procedural transitions or urgent spoken voice alerts (`ERROR_SEQ`, `ERROR_SKIP`) when anomalies occur.
+
+---
+
+## 8. Sitara Mission Control Frontend & Pipeline Architecture
+
+The system features a custom mission-grade ground and on-board console located in the [`frontend/`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/) directory. Built with **React 19, TypeScript, Vite, and Tailwind CSS v4**, the interface mirrors real space telemetry dashboards deployed for ISRO flight monitoring.
+
+### 🖥️ Frontend Component Overview
+
+```
+frontend/src/
+├── components/
+│   ├── Header/             # Mission identity ("Sitara"), live connection heartbeat, status chips
+│   ├── Camera1/            # Primary HAR viewport (Live MJPEG feed, 2D/3D overlays, step metrics)
+│   ├── Camera2/            # Secondary 3D Digital Twin viewport (Synchronized simulation stream)
+│   ├── ProcessTimeline/    # Dynamic procedural checklist, progress bar & human consent controls
+│   ├── AnomalyDetection/   # Autonomous warning engine, Web Speech API TTS & incident history
+│   ├── Logs/               # Filterable real-time system event & telemetry terminal
+│   ├── StarField/          # Ambient space orbital canvas particle background
+│   └── common/             # SmoothNumber, AnimatedText & HumanConsentModal components
+├── hooks/
+│   ├── useTelemetry.ts     # 25 Hz non-blocking telemetry polling with request deduplication
+│   ├── useDigitalTwin.ts   # 10 Hz 3D entity & joint coordinate synchronization
+│   └── useSessionActions.ts# Timeline ledger & compliance history synchronization
+├── services/
+│   └── api.ts              # Centralized Python backend endpoint contracts (Port 8080)
+└── types/
+    └── api.ts              # Strongly typed mirror of Python telemetry & blackboard dataclasses
+```
+
+* **Camera 01 Panel (`Camera1.tsx`)**: Streams real-time annotated video (`/stream`) with zero-latency HTML5 image rendering. If connection drops, it automatically falls back to an off-screen double-buffered snapshot polling mechanism (`/snapshot`) to prevent black screen flicker. Displays tabular FPS and latency counters, step verdicts (*Nominal* vs *Deviation*), and a 4-field contextual information strip:
+  - *Previous Step*: Context of completed action.
+  - *Current Action*: Live detected astronaut state (`what_i_am_doing`).
+  - *Expected Next*: Proactive guidance instruction (`what_i_have_to_do`).
+  - *Step Status*: Debounced validation indicator.
+* **Camera 02 Panel (`Camera2.tsx`)**: Displays the parallel 3D Digital Twin simulation stream (`/twin_stream`) providing third-person spatial awareness of the science rack.
+* **Process Timeline Panel (`ProcessTimeline.tsx`)**: Auto-scrolling procedure step tracker showing the deterministic progress of the Finite State Machine (FSM). Features an interactive **Human Consent Modal** allowing ground operators to execute critical overrides: `Start`, `Pause`, `Reset`, video source switching, and protocol selection.
+* **Anomaly Surveillance Panel (`AnomalyDetection.tsx`)**: Listens to blackboard anomaly codes (`ERROR_SEQ`, `ERROR_SKIP`). When triggered, it flashes high-priority visual alarms, speaks synthetic voice alerts using the browser's native **Web Speech Synthesis API**, and logs the incident to the audit ledger.
+
+---
+
+### 🔗 Bi-Directional Python Pipeline Integration
+
+The frontend connects to the Python 8-agent backend through 5 specialized, decoupled streaming and REST pipelines hosted by [`DualVideoPipeline`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/streaming/video_pipeline.py) on port `8080`:
+
+```mermaid
+flowchart LR
+    subgraph PythonBackend["Python Multi-Agent Backend (main.py)"]
+        direction TB
+        Agents["8-Agent Blackboard Engine<br/>(Perception, Fusion, HAR, FSM)"]
+        SharedMem["Shared Digital Twin Memory<br/>(src/core/shared_memory.py)"]
+        VideoPipe["DualVideoPipeline Server<br/>(src/streaming/video_pipeline.py:8080)"]
+        SessionLog["Session Action Logger<br/>(experiments/session_actions.json)"]
+        Agents --> SharedMem
+        SharedMem --> VideoPipe
+        Agents --> SessionLog
+    end
+
+    subgraph FrontendApp["React 19 Frontend (frontend/)"]
+        direction TB
+        HookTelem["useTelemetry.ts (25 Hz)"]
+        HookTwin["useDigitalTwin.ts (10 Hz)"]
+        HookAction["useSessionActions.ts"]
+        C2Controls["HumanConsentModal.tsx"]
+        Cam1["Camera 01 (HAR View)"]
+        Cam2["Camera 02 (Twin View)"]
+        Timeline["Process Timeline & Anomaly"]
+    end
+
+    VideoPipe -- "MJPEG Stream (/stream)" --> Cam1
+    VideoPipe -- "MJPEG Stream (/twin_stream)" --> Cam2
+    VideoPipe -- "JSON Telemetry (/telemetry)" --> HookTelem
+    VideoPipe -- "JSON Scene Graph (/api/digital_twin)" --> HookTwin
+    SessionLog -. "JSON File Read (/api/session_actions)" .-> VideoPipe
+    VideoPipe -- "JSON Actions" --> HookAction
+    HookTelem --> Cam1 & Timeline
+    HookTwin --> Cam2
+    HookAction --> Timeline
+    C2Controls -- "POST /reset, /start, /api/source, /api/experiment" --> VideoPipe
+    VideoPipe -- "Dynamic Switch Flags" --> Agents
+```
+
+#### The 5 Connection Pipelines:
+
+1. **Dual MJPEG Video Pipeline (`/stream` & `/twin_stream`)**:
+   - **Python Side**: [`MonitoringAgent`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/agents/monitoring_agent.py) composites 2D bounding boxes, 3D joints, and metric labels onto the raw frame, encodes it to JPEG (`cv2.imencode`), and buffers it. The threaded HTTP server streams multipart boundary frames at 30 FPS.
+   - **Frontend Side**: Consumed directly via standard HTML `<img>` elements (`API.STREAM` and `API.TWIN_STREAM`). An event-driven fallback automatically initiates snapshot polling if the stream disconnects.
+2. **High-Frequency Telemetry Pipeline (`/telemetry` at 25 Hz / 40ms)**:
+   - **Python Side**: Reads live atomic state from [`DigitalTwinMemory`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/core/shared_memory.py) (FPS, latency, step ID, step name, verdict, anomaly code, lid angle, debounce counts).
+   - **Frontend Side**: Polled by [`useTelemetry.ts`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/src/hooks/useTelemetry.ts) at 40ms. Includes **request deduplication** (`inFlightRef`) to avoid overlapping HTTP requests and a custom **shallow equality comparator** (`shallowTelemetryEqual`) to prevent unnecessary React re-renders when values are steady.
+3. **3D Digital Twin State Pipeline (`/api/digital_twin` at 10 Hz / 100ms)**:
+   - **Python Side**: [`DigitalTwinAgent`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/agents/digital_twin_agent.py) synchronizes 3D bounding boxes, entity poses in rack frame $\mathcal{R}$, container lid angles, and astronaut joint vectors.
+   - **Frontend Side**: Polled by [`useDigitalTwin.ts`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/src/hooks/useDigitalTwin.ts) at 100ms to update virtual entity representations without loading the 25 Hz video bus.
+4. **Structured Compliance & Forensic Session Pipeline (`/api/session_actions`)**:
+   - **Python Side**: [`ActionSessionLogger`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/telemetry/action_session_logger.py) writes finalized step intervals, durations, and anomaly incidents into `experiments/session_actions.json`.
+   - **Frontend Side**: Read by [`useSessionActions.ts`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/src/hooks/useSessionActions.ts) to populate the historical incident table and compliance statistics in [`AnomalyDetection.tsx`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/frontend/src/components/AnomalyDetection/AnomalyDetection.tsx).
+5. **Bi-Directional Command & Control (C2) Pipeline**:
+   - The frontend transmits state changes and manual interventions back to Python:
+     - `GET /reset`: Signals the Validation Agent to reset the FSM to State 0.
+     - `GET /start`: Resumes or starts the experiment sequence.
+     - `GET /api/source?set=<source>`: Dynamically hot-swaps input feeds (e.g. `0` for live webcam, `c1.mp4` for recorded clip, `red_yellow.mp4` for benchmark simulation) without restarting the Python process.
+     - `GET /api/experiment?set=<config>`: Switches the active procedural JSON protocol on the fly.
+     - `GET /api/analyze`: Triggers the asynchronous offline LLM mission debriefing engine ([`offline_llm_analyzer.py`](file:///home/sovan-rajbanshi/Projects/realtime-work-detection/src/llm/offline_llm_analyzer.py)).
+
+---
+
