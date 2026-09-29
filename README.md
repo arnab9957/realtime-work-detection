@@ -272,11 +272,11 @@ Combined with **3D Human Mesh Recovery (Multi-HMR)** and **Visual Relationship &
 <table align="center" width="100%">
   <tr>
     <th align="center" width="50%">
-      <h4>📹 Video 1: 3D Human Mesh Recovery (Multi-HMR & RHINO)</h4>
+      <h4>📹 Video 1: 3D Human Mesh Recovery (Multi-HMR & RHINO), RHINO: Reconstructing Human Interactions with Novel Objects from Monocular Videos</h4>
       <sub>Monocular 3D Human Body Mesh, Joint Articulation & Object Contact Modeling</sub>
     </th>
     <th align="center" width="50%">
-      <h4>📹 Video 2: Scene Structure & Relationship Detection (RelSGG)</h4>
+      <h4>📹 Video 2: AgentSTAR: Agentic Shape Tracking and Reconstruction from Monocular Videos".</h4>
       <sub>Hierarchical Hardware Parsing & Dynamic Relationship Triplet Extraction</sub>
     </th>
   </tr>
