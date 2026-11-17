@@ -149,7 +149,7 @@ class ValidationAgent:
         objects: Dict[str, ExperimentObject],
         lid_angle: float,
         active_hoi: list,
-        current_frame: int,
+        current_frame: int = 0,
         llm_verification: Optional[Dict[str, Any]] = None,
         action_history: Optional[List[Dict[str, Any]]] = None,
         astronaut_pose: Optional[AstronautPose3D] = None,
@@ -441,6 +441,167 @@ class ValidationAgent:
                     transition_committed = "CONTAINER_REOPENED"
 
         # =================================================================
+        # BRANCH C: WATER BOTTLE MANIPULATION & DRINKING (BAS-EXP-WATER-BOTTLE)
+        # Sequence:
+        # Step 0: IDLE (Bottle resting on surface)
+        # Step 1: BOTTLE_TAKEN (Hand grasps & lifts bottle)
+        # Step 2: CAP_OPENED (Cap unscrewed / removed from bottle top)
+        # Step 3: DRINKING (Bottle raised to mouth + tilt angle)
+        # Step 4: CAP_CLOSED (Cap returned & secured on bottle)
+        # Step 5: BOTTLE_PUT_DOWN / COMPLETE (Bottle placed on surface & released)
+        # =================================================================
+        elif self.experiment_id in ("BAS-EXP-WATER-BOTTLE", "EXP-WATER-BOTTLE"):
+            bottle_obj = objects.get("bottle")
+            cap_obj = objects.get("bottle_cap") or objects.get("cap")
+
+            # Extract spatial/kinematic parameters
+            mouth_thresh = self.config.get("mouth_contact_threshold_m", 0.12)
+            tilt_thresh = self.config.get("bottle_tilt_threshold_deg", 22.0)
+            hand_thresh = self.config.get("hand_contact_threshold_m", 0.10)
+
+            # Heuristic signals if attributes are present, or fallback from hoi / objects
+            is_held = (
+                (bottle_obj and getattr(bottle_obj, "state", None) in (EntityState.GRASPED, EntityState.EXTRACTED))
+                or any(h.object_name == "bottle" and h.action in (HOIAction.GRASP, HOIAction.EXTRACT, HOIAction.CONTACT) for h in active_hoi)
+                or (bottle_obj and not getattr(bottle_obj, "on_surface", True))
+                or (llm_step_val is not None and llm_step_val >= 1 and llm_confidence >= 0.70)
+            )
+
+            cap_is_open = (
+                (bottle_obj and getattr(bottle_obj, "cap_open", False))
+                or (cap_obj and getattr(cap_obj, "state", None) == EntityState.EXTRACTED)
+                or any(h.object_name in ("bottle_cap", "cap") and h.action in (HOIAction.EXTRACT, HOIAction.GRASP) for h in active_hoi)
+                or (llm_step_val is not None and llm_step_val in (2, 3) and llm_confidence >= 0.70)
+            )
+
+            near_mouth = (
+                (bottle_obj and getattr(bottle_obj, "near_mouth", False))
+                or (bottle_obj and getattr(bottle_obj, "dist_to_mouth", 1.0) < mouth_thresh)
+                or (llm_step_val == 3 and llm_confidence >= 0.70)
+            )
+
+            is_tilted = (
+                (bottle_obj and getattr(bottle_obj, "tilt_angle", 0.0) >= tilt_thresh)
+                or (llm_step_val == 3 and llm_confidence >= 0.70)
+            )
+
+            is_drinking = near_mouth and (is_tilted or llm_step_val == 3)
+
+            on_surface = (
+                (bottle_obj and getattr(bottle_obj, "on_surface", False))
+                or (bottle_obj and getattr(bottle_obj, "state", None) == EntityState.DOCKED)
+                or (not is_held and self.current_step in (FSMStep.CAP_CLOSED, FSMStep.COMPLETE))
+                or (llm_step_val == 5 and llm_confidence >= 0.70)
+            )
+
+            # Step 0: IDLE -> Awaiting bottle grasp & lift
+            if self.current_step == FSMStep.IDLE:
+                if is_held or (llm_step_val == 1 and llm_confidence >= 0.70):
+                    self._accumulate_debounce(FSMStep.BOTTLE_TAKEN)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.BOTTLE_TAKEN
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        transition_committed = "BOTTLE_TAKEN"
+                else:
+                    self._reset_debounce()
+
+            # Step 1: BOTTLE_TAKEN -> Awaiting cap opening
+            elif self.current_step == FSMStep.BOTTLE_TAKEN:
+                # Anomaly: Drinking attempted while cap is still closed
+                if is_drinking and not cap_is_open:
+                    self.anomaly_status = AnomalyType.ERROR_SEQ
+                    self.anomaly_message = "Warning: Wrong move! The bottle cap is still closed. Please open the cap before drinking."
+                    self.is_step_correct = False
+                    self.step_verdict = "PROCEDURAL ERROR [ERROR_SEQ]"
+                    return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
+                else:
+                    if self.anomaly_status == AnomalyType.ERROR_SEQ:
+                        self.anomaly_status = AnomalyType.NONE
+                        self.anomaly_message = ""
+                        self.is_step_correct = True
+                        self.step_verdict = "CORRECT (NOMINAL)"
+
+                if cap_is_open or (llm_step_val == 2 and llm_confidence >= 0.70):
+                    self._accumulate_debounce(FSMStep.CAP_OPENED)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.CAP_OPENED
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        transition_committed = "CAP_OPENED"
+                else:
+                    self._reset_debounce()
+
+            # Step 2: CAP_OPENED -> Awaiting drinking
+            elif self.current_step == FSMStep.CAP_OPENED:
+                # Anomaly: Putting down bottle while cap is open
+                if on_surface and not is_held:
+                    self.anomaly_status = AnomalyType.ERROR_SKIP
+                    self.anomaly_message = "Warning: Incomplete move! The bottle cap is still open. Please close the cap before putting down the bottle."
+                    self.is_step_correct = False
+                    self.step_verdict = "PROCEDURAL ERROR [ERROR_SKIP]"
+                    return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
+
+                if is_drinking or (llm_step_val == 3 and llm_confidence >= 0.70):
+                    self._accumulate_debounce(FSMStep.DRINKING)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.DRINKING
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        transition_committed = "DRINKING"
+                else:
+                    self._reset_debounce()
+
+            # Step 3: DRINKING -> Awaiting cap closing
+            elif self.current_step == FSMStep.DRINKING:
+                # Anomaly: Putting down bottle while drinking/open
+                if on_surface and not is_held:
+                    self.anomaly_status = AnomalyType.ERROR_SKIP
+                    self.anomaly_message = "Warning: Incomplete move! Please close the cap before putting down the bottle."
+                    self.is_step_correct = False
+                    self.step_verdict = "PROCEDURAL ERROR [ERROR_SKIP]"
+                    return self.current_step, 0, self.anomaly_status, self.anomaly_message, None
+
+                # Drinking complete when bottle leaves mouth and cap is closed
+                if (not near_mouth and not cap_is_open) or (llm_step_val == 4 and llm_confidence >= 0.70):
+                    self._accumulate_debounce(FSMStep.CAP_CLOSED)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.CAP_CLOSED
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        transition_committed = "CAP_CLOSED"
+                else:
+                    self._reset_debounce()
+
+            # Step 4: CAP_CLOSED -> Awaiting putting down bottle
+            elif self.current_step == FSMStep.CAP_CLOSED:
+                if on_surface or (not is_held and bottle_obj and getattr(bottle_obj, "on_surface", True)) or (llm_step_val == 5 and llm_confidence >= 0.70):
+                    self._accumulate_debounce(FSMStep.COMPLETE)
+                    if self.debounce_counter >= self.debounce_required:
+                        self.current_step = FSMStep.COMPLETE
+                        self.candidate_step = None
+                        self.debounce_counter = 0
+                        self.step_start_time = now
+                        transition_committed = "BOTTLE_PUT_DOWN"
+                else:
+                    self._reset_debounce()
+
+            # Step 5: COMPLETE
+            elif self.current_step == FSMStep.COMPLETE:
+                # If bottle is picked up again after 3 seconds, allow loop/restart
+                if (now - self.step_start_time) >= 3.0 and is_held:
+                    self.current_step = FSMStep.BOTTLE_TAKEN
+                    self.candidate_step = None
+                    self.step_start_time = now
+                    self.anomaly_status = AnomalyType.NONE
+                    self.anomaly_message = ""
+                    transition_committed = "BOTTLE_RETAKEN"
+
+        # =================================================================
         # BRANCH B: BOX OBJECT EXTRACTION & RETURN PROCEDURE (BAS-EXP-BOX-RETURN)
         # Sequence: IDLE -> OPEN BOX -> EXTRACT OBJECT -> RETURN OBJECT -> CLOSE BOX
         # =================================================================
@@ -673,7 +834,6 @@ class ValidationAgent:
         """Checks config-defined forbidden_events for the current step."""
         current_step_int = int(self.current_step)
         forbidden_list = self.forbidden_events_map.get(current_step_int, [])
-
         for event_name in forbidden_list:
             condition_fn = FORBIDDEN_EVENT_CONDITIONS.get(event_name)
             if condition_fn and condition_fn(objects, lid_angle, active_hoi):
@@ -699,7 +859,10 @@ class ValidationAgent:
             "lid_angle": lid_angle,
             "hoi_actions": [(h.object_name, h.action.value) for h in active_hoi],
             "object_states": {
-                name: (obj.state.value, obj.is_inside_container)
+                name: (
+                    obj.state.value if hasattr(obj, "state") and hasattr(obj.state, "value") else str(getattr(obj, "state", "IDLE")),
+                    getattr(obj, "is_inside_container", False)
+                )
                 for name, obj in objects.items()
             }
         }
@@ -784,13 +947,21 @@ class ValidationAgent:
                             "Warning: Wrong move! An object was extracted after both were returned. "
                             "Please leave the objects in the container and close the lid."
                         )
-                    return None
+        elif self.experiment_id in ("BAS-EXP-WATER-BOTTLE", "EXP-WATER-BOTTLE"):
+            if self.highest_committed_step >= 2 and current_int < self.highest_committed_step:
+                self.regression_debounce += 1
+                if self.regression_debounce >= self.regression_debounce_required:
+                    return (
+                        AnomalyType.ERROR_REGRESSION,
+                        "Warning: Wrong move! A completed step has been reverted."
+                    )
+                return None
         else:
             # Single-box experiment: object returned after OBJECT_EXTRACTED
             if self.highest_committed_step >= 2 and current_int == 2:
                 for name, obj in objects.items():
                     if name not in ("container_box", "container_lid", "operator_hand", "human_body", "person"):
-                        if obj.is_inside_container and obj.state == EntityState.DOCKED:
+                        if getattr(obj, "is_inside_container", False) and getattr(obj, "state", None) == EntityState.DOCKED:
                             # Only flag if NOT in OBJECT_RETURNED step (step 3)
                             if current_int < 3:
                                 self.regression_debounce += 1

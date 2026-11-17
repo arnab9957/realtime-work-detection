@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Activity, Play, RotateCcw, CheckCircle2, Pause } from 'lucide-react';
-import { RED_YELLOW_STEPS, BOX_RETURN_STEPS, STEP_LABELS, type ProcessStep } from '../../mock/fallbackData';
+import { getStepsForExperiment, getStepLabel, type ProcessStep } from '../../mock/fallbackData';
 import type { TelemetryData } from '../../types/api';
 import { API } from '../../services/api';
 import { AnimatedText, SmoothNumber } from '../common/SmoothData';
@@ -29,11 +29,10 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
   }, [telemetry.source_type]);
 
   // Select procedure steps based on active experiment protocol
-  const steps: ProcessStep[] = useMemo(() => {
-    return telemetry.experiment_id && telemetry.experiment_id.includes('BOX-RETURN')
-      ? BOX_RETURN_STEPS
-      : RED_YELLOW_STEPS;
-  }, [telemetry.experiment_id]);
+  const steps: ProcessStep[] = useMemo(
+    () => getStepsForExperiment(telemetry.experiment_id),
+    [telemetry.experiment_id]
+  );
 
   // Map step integer & step_name to the correct process steps index
   const activeIdx = resolveActiveStep(steps, telemetry.step_name, telemetry.step);
@@ -64,7 +63,7 @@ export function ProcessTimeline({ telemetry }: ProcessTimelineProps) {
     }
   }, [activeIdx, isComplete, isStopped]);
 
-  const stepTitle = STEP_LABELS[telemetry.step_name] || telemetry.step_name || 'INITIALIZING';
+  const stepTitle = getStepLabel(telemetry.experiment_id, telemetry.step_name) || telemetry.step_name || 'INITIALIZING';
 
   // Human Consent action executor: switches source (c1.mp4 vs Live camera) and executes action
   const handleConfirmConsent = async (action: ConsentActionType, feedMode: FeedMode) => {

@@ -20,7 +20,8 @@ function shallowTelemetryEqual(a: TelemetryData, b: TelemetryData): boolean {
     a.transition_event === b.transition_event &&
     a.fps === b.fps &&
     a.latency_ms === b.latency_ms &&
-    a.source_type === b.source_type
+    a.source_type === b.source_type &&
+    JSON.stringify(a.scene_objects) === JSON.stringify(b.scene_objects)
   );
 }
 

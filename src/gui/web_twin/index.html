@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BAS Missionnect" href="https://fonts.googleapis.com">
+  <title>BAS Mission Control | AI Sequence Validation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -341,6 +342,7 @@
       <button class="pill-btn active" id="btn-ry" onclick="selectFeed('red_yellow')">RED-YELLOW EXPERIMENT</button>
       <button class="pill-btn" id="btn-cam" onclick="selectFeed('cam')">LIVE WEBCAM</button>
       <button class="pill-btn" id="btn-box" onclick="selectFeed('box_return')">BOX RETURN</button>
+      <button class="pill-btn" id="btn-bottle" onclick="selectFeed('water_bottle')">WATER BOTTLE</button>
       
       <button class="reset-btn" id="btn-restart" onclick="restartTestSequence()">RESET ↺</button>
     </div>
@@ -423,6 +425,17 @@
           { id: 5, title: "Close Box & Complete" }
         ]
       },
+      "BAS-EXP-WATER-BOTTLE": {
+        name: "WATER BOTTLE DRINKING PROCEDURE",
+        steps: [
+          { id: 0, title: "Standby / Bottle On Surface" },
+          { id: 1, title: "Take Bottle" },
+          { id: 2, title: "Open Bottle Cap" },
+          { id: 3, title: "Drink Water" },
+          { id: 4, title: "Close Bottle Cap" },
+          { id: 5, title: "Put Down Bottle & Complete" }
+        ]
+      },
       "BAS-EXP-BOX-RETURN": {
         name: "BOX RETURN PROCEDURE",
         steps: [
@@ -435,9 +448,24 @@
       }
     };
 
+    const EXPERIMENT_BUTTONS = {
+      "BAS-EXP-26174": "btn-ry",
+      "BAS-EXP-RED-YELLOW": "btn-ry",
+      "BAS-EXP-BOX-RETURN": "btn-box",
+      "BAS-EXP-WATER-BOTTLE": "btn-bottle"
+    };
+
+    function highlightExperiment(expId) {
+      for (const id of ["btn-ry", "btn-box", "btn-bottle"]) {
+        const btn = document.getElementById(id);
+        if (btn) btn.className = (EXPERIMENT_BUTTONS[expId] === id) ? 'pill-btn active' : 'pill-btn';
+      }
+    }
+
     function renderChecklist(expId) {
       if (!PROTOCOLS[expId]) expId = "BAS-EXP-26174";
       activeExperimentId = expId;
+      highlightExperiment(expId);
       const proto = PROTOCOLS[expId];
       if (!checklistBody) return;
 
@@ -458,10 +486,12 @@
       const btnRy = document.getElementById('btn-ry');
       const btnCam = document.getElementById('btn-cam');
       const btnBox = document.getElementById('btn-box');
+      const btnBottle = document.getElementById('btn-bottle');
 
       if (btnRy) btnRy.className = (type === 'red_yellow') ? 'pill-btn active' : 'pill-btn';
       if (btnCam) btnCam.className = (type === 'cam') ? 'pill-btn active' : 'pill-btn';
       if (btnBox) btnBox.className = (type === 'box_return') ? 'pill-btn active' : 'pill-btn';
+      if (btnBottle) btnBottle.className = (type === 'water_bottle') ? 'pill-btn active' : 'pill-btn';
 
       try {
         if (type === 'red_yellow') {
@@ -474,6 +504,9 @@
           await fetch('/api/experiment?set=box_return&t=' + Date.now());
           await fetch('/api/source?set=clip1.mp4&t=' + Date.now());
           renderChecklist("BAS-EXP-BOX-RETURN");
+        } else if (type === 'water_bottle') {
+          await fetch('/api/experiment?set=water_bottle&t=' + Date.now());
+          renderChecklist("BAS-EXP-WATER-BOTTLE");
         }
         restartTestSequence();
       } catch (err) {
@@ -533,8 +566,11 @@
         if (data.source_type) {
           const isCam = data.source_type === "LIVE_WEBCAM";
           const isRY = data.source_type === "RED_YELLOW" || String(data.source_type).includes("red_yellow");
+          const isBottle = data.experiment_id === "BAS-EXP-WATER-BOTTLE";
           if (feedTitle) {
-            feedTitle.textContent = isCam ? "LIVE CAMERA FEED" : (isRY ? "ISRO RED-YELLOW EXPERIMENT FEED" : "RECORDED DEMO FEED");
+            feedTitle.textContent = isCam
+              ? (isBottle ? "LIVE CAMERA · WATER BOTTLE EXPERIMENT" : "LIVE CAMERA FEED")
+              : (isRY ? "ISRO RED-YELLOW EXPERIMENT FEED" : (isBottle ? "WATER BOTTLE EXPERIMENT FEED" : "RECORDED DEMO FEED"));
           }
         }
 

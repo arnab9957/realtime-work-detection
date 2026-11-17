@@ -100,7 +100,8 @@ class MonitoringAgent:
         step_verdict: str = "CORRECT (NOMINAL)",
         experiment_id: str = "BAS-EXP-BOX-RETURN",
         scene_graph: Optional[Dict[str, Any]] = None,
-        spatial_relations: Optional[List[str]] = None
+        spatial_relations: Optional[List[str]] = None,
+        scene_objects: Optional[List[Dict[str, Any]]] = None
     ) -> np.ndarray:
         """
         Synthesizes audio alerts, logs session actions to JSON, and renders live HUD overlays.
@@ -206,7 +207,8 @@ class MonitoringAgent:
                 "source_type": source_type,
                 "is_step_correct": is_step_correct,
                 "step_verdict": step_verdict,
-                "experiment_id": experiment_id
+                "experiment_id": experiment_id,
+                "scene_objects": scene_objects or []
             }, scene_graph=scene_graph, twin_frame=twin_canvas)
 
         return annotated_frame
@@ -481,9 +483,13 @@ class MonitoringAgent:
             or "26174" in experiment_id
             or "RED_YELLOW" in source_type.upper()
         )
+        is_bottle_experiment = (
+            "BOTTLE" in experiment_id.upper()
+            or "BOTTLE" in source_type.upper()
+        )
         is_complete = (
             current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED)
-            or int(current_step) >= (5 if is_dual_experiment else 4)
+            or int(current_step) >= (5 if (is_dual_experiment or is_bottle_experiment) else 4)
         )
         sep_col = (0, 230, 120) if is_complete else ((0, 60, 220) if anomaly != AnomalyType.NONE else (0, 180, 230))
         cv2.line(frame, (0, banner_h), (w, banner_h), sep_col, 1)
@@ -493,6 +499,9 @@ class MonitoringAgent:
         if source_type == "LIVE_WEBCAM":
             src_tag = "LIVE #0"
             title_col = (0, 240, 150)
+        elif is_bottle_experiment:
+            src_tag = "WATER-BOTTLE"
+            title_col = (50, 220, 255)
         elif "RED_YELLOW" in source_type:
             src_tag = "RED-YELLOW"
             title_col = (50, 220, 255)
@@ -520,7 +529,16 @@ class MonitoringAgent:
         right_bound = status_x - 14
 
         # Header Zone 2 (Center): Active Procedure Step (Guaranteed No Overlap)
-        if is_dual_experiment:
+        if is_bottle_experiment:
+            step_labels = {
+                0: "S0: STANDBY",
+                1: "S1: BOTTLE TAKEN",
+                2: "S2: CAP OPENED",
+                3: "S3: DRINKING WATER",
+                4: "S4: CAP CLOSED",
+                5: "S5: BOTTLE PUT DOWN"
+            }
+        elif is_dual_experiment:
             step_labels = {
                 0: "S0: STANDBY",
                 1: "S1: CONTAINER OPEN",

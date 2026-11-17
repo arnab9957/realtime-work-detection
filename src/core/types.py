@@ -5,7 +5,7 @@ Defines standardized data classes, enums, and structures shared across all 8 age
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import time
 
 
@@ -41,8 +41,15 @@ class FSMStep(int, Enum):
     OBJECTS_RETURNED = 4
     DUAL_COMPLETE = 5
 
-    def get_name(self, is_dual: bool = False) -> str:
-        if is_dual:
+    # Semantic Aliases for Water Bottle Procedure
+    BOTTLE_TAKEN = 1
+    CAP_OPENED = 2
+    DRINKING = 3
+    CAP_CLOSED = 4
+    BOTTLE_PUT_DOWN = 5
+
+    def get_name(self, mode: Any = False) -> str:
+        if mode is True or str(mode).lower() in ("dual", "isro", "red_yellow", "true"):
             mapping = {
                 0: "IDLE",
                 1: "CONTAINER_OPEN",
@@ -50,6 +57,16 @@ class FSMStep(int, Enum):
                 3: "YELLOW_EXTRACTED",
                 4: "OBJECTS_RETURNED",
                 5: "BOX_CLOSED"
+            }
+            return mapping.get(self.value, self.name)
+        elif str(mode).lower() in ("bottle", "water_bottle", "bas-exp-water-bottle"):
+            mapping = {
+                0: "IDLE",
+                1: "BOTTLE_TAKEN",
+                2: "CAP_OPENED",
+                3: "DRINKING",
+                4: "CAP_CLOSED",
+                5: "COMPLETE"
             }
             return mapping.get(self.value, self.name)
         return self.name
@@ -91,6 +108,14 @@ FORBIDDEN_EVENT_CONDITIONS = {
     "CONTAINER_ABANDONED": lambda objects, lid_angle, hoi: (
         not any(h.action != HOIAction.IDLE for h in hoi)
         and lid_angle >= 15.0
+    ),
+    "DRINKING_ATTEMPTED": lambda objects, lid_angle, hoi: (
+        "bottle" in objects
+        and getattr(objects["bottle"], "near_mouth", False)
+    ),
+    "BOTTLE_PUT_DOWN": lambda objects, lid_angle, hoi: (
+        "bottle" in objects
+        and getattr(objects["bottle"], "on_surface", False)
     ),
 }
 

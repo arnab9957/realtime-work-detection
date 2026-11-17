@@ -1,0 +1,105 @@
+{
+    "experiment_id": "BAS-EXP-WATER-BOTTLE",
+    "name": "Water Bottle Manipulation & Drinking Procedure",
+    "description": "Operator grasps bottle, opens cap, drinks water, closes cap, and puts down bottle on the surface.",
+    "debounce_frames": 6,
+    "fps": 30.0,
+    "mouth_contact_threshold_m": 0.12,
+    "bottle_tilt_threshold_deg": 22.0,
+    "hand_contact_threshold_m": 0.10,
+    "states": {
+        "0": {
+            "name": "IDLE",
+            "instruction": "Procedure initialized. Please take the water bottle.",
+            "expected_next_event": "BOTTLE_TAKEN",
+            "allowed_transitions": [1],
+            "timeout_seconds": null
+        },
+        "1": {
+            "name": "BOTTLE_TAKEN",
+            "instruction": "Bottle grasped. Next step: Please open the bottle cap.",
+            "expected_next_event": "CAP_OPENED",
+            "allowed_transitions": [2],
+            "forbidden_events": [
+                "DRINKING_ATTEMPTED",
+                "BOTTLE_PUT_DOWN"
+            ],
+            "timeout_seconds": 120,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 160,
+                "max_shoulder_angle_deg": 140,
+                "rom_violation_allowed": true
+            }
+        },
+        "2": {
+            "name": "CAP_OPENED",
+            "instruction": "Cap opened. Next step: Please drink water.",
+            "expected_next_event": "DRINKING",
+            "allowed_transitions": [3],
+            "forbidden_events": [
+                "CAP_CLOSED"
+            ],
+            "timeout_seconds": 120,
+            "ergonomic_envelope": {
+                "max_elbow_angle_deg": 170,
+                "max_shoulder_angle_deg": 150,
+                "rom_violation_allowed": true
+            }
+        },
+        "3": {
+            "name": "DRINKING",
+            "instruction": "Drinking water. Next step: Please close the bottle cap.",
+            "expected_next_event": "CAP_CLOSED",
+            "allowed_transitions": [4],
+            "forbidden_events": [
+                "BOTTLE_PUT_DOWN"
+            ],
+            "timeout_seconds": 120
+        },
+        "4": {
+            "name": "CAP_CLOSED",
+            "instruction": "Cap closed securely. Next step: Please put down the bottle.",
+            "expected_next_event": "BOTTLE_PUT_DOWN",
+            "allowed_transitions": [5],
+            "forbidden_events": [
+                "DRINKING_ATTEMPTED"
+            ],
+            "timeout_seconds": 120
+        },
+        "5": {
+            "name": "COMPLETE",
+            "instruction": "Bottle put down. Water drinking procedure successfully completed.",
+            "expected_next_event": null,
+            "allowed_transitions": [],
+            "timeout_seconds": null
+        }
+    },
+    "anomalies": {
+        "ERROR_SEQ": {
+            "code": "ERR_01_DRINKING_CLOSED_CAP",
+            "alert_tts": "Warning: Wrong move! The bottle cap is still closed. Please open the cap before drinking.",
+            "recovery_prompt": "Open the bottle cap before bringing the bottle to your mouth."
+        },
+        "ERROR_SKIP": {
+            "code": "ERR_02_PUTDOWN_BEFORE_CLOSING",
+            "alert_tts": "Warning: Incomplete move! The bottle cap is still open. Please close the cap before putting down the bottle.",
+            "recovery_prompt": "Close and secure the bottle cap before placing the bottle on the table."
+        },
+        "ERROR_PREMATURE_PUTDOWN": {
+            "code": "ERR_03_PREMATURE_PUTDOWN",
+            "alert_tts": "Warning: Incomplete procedure. Please complete drinking and close the cap before putting down the bottle.",
+            "recovery_prompt": "Pick up the bottle and complete the remaining procedure steps."
+        },
+        "STALL_TIMEOUT": {
+            "code": "WARN_04_INACTIVITY",
+            "timeout_seconds": 45,
+            "alert_tts": "Notice: Inactivity detected during bottle operation. Please proceed with the next step.",
+            "recovery_prompt": "Continue with the active procedure step."
+        },
+        "ERROR_REGRESSION": {
+            "code": "ERR_05_STEP_REGRESSION",
+            "alert_tts": "Warning: A completed step has been reverted. Please redo the step to continue.",
+            "recovery_prompt": "Redo the undone step."
+        }
+    }
+}

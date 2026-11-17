@@ -28,7 +28,7 @@ class RealtimeLLMVerifier:
 
     def __init__(
         self,
-        model_name: str = "qwen3-vl:2b-instruct",
+        model_name: str = os.environ.get("BAS_VLM_MODEL", "qwen3-vl:2b-instruct"),
         ollama_url: str = "http://localhost:11434/api/generate",
         interval_sec: float = 1.0,
         window_size: int = 25,
@@ -78,13 +78,23 @@ class RealtimeLLMVerifier:
                 self.experiment_id = config_or_id.get("experiment_id", "BAS-EXP-RED-YELLOW")
             else:
                 self.experiment_id = str(config_or_id)
-            self.max_step = 5 if ("red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id) else 4
+            is_bottle = "bottle" in self.experiment_id.lower()
+            self.max_step = 5 if ("red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id or is_bottle) else 4
             self.step_names = self._get_protocol_step_names()
             self.reset()
 
 
     def _get_protocol_step_names(self) -> Dict[int, str]:
-        if "red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id:
+        if "bottle" in self.experiment_id.lower():
+            return {
+                0: "IDLE",
+                1: "BOTTLE_TAKEN",
+                2: "CAP_OPENED",
+                3: "DRINKING",
+                4: "CAP_CLOSED",
+                5: "BOTTLE_PUT_DOWN"
+            }
+        elif "red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id:
             return {
                 0: "IDLE",
                 1: "CONTAINER_OPEN",
@@ -172,9 +182,30 @@ class RealtimeLLMVerifier:
         with self.lock:
             return dict(self.latest_verification)
 
+    def _model_available(self) -> bool:
+        """Checks once that Ollama is reachable and has the configured model pulled."""
+        tags_url = self.ollama_url.rsplit("/api/", 1)[0] + "/api/tags"
+        try:
+            with urllib.request.urlopen(tags_url, timeout=3) as resp:
+                installed = [m.get("name", "") for m in json.loads(resp.read().decode("utf-8")).get("models", [])]
+        except Exception as e:
+            print(f"[VLM Verifier] WARNING: Ollama not reachable at {tags_url} ({e}). "
+                  "Using deterministic rule-based verification instead.")
+            return False
+        wanted = self.model_name if ":" in self.model_name else self.model_name + ":latest"
+        if wanted in installed:
+            return True
+        print(f"[VLM Verifier] WARNING: Ollama model '{self.model_name}' is not installed "
+              f"(installed: {', '.join(installed) or 'none'}). "
+              f"Run `ollama pull {self.model_name}` or pass --vlm-model / set BAS_VLM_MODEL. "
+              "Using deterministic rule-based verification instead.")
+        return False
+
     def _run_worker(self):
         """Background thread executing non-blocking Ollama queries."""
         time.sleep(0.5)
+        vlm_ok = self._model_available()
+        last_check = time.time()
 
         while not self._stop_event.is_set():
             self.trigger_event.wait(timeout=self.interval_sec)
@@ -183,6 +214,11 @@ class RealtimeLLMVerifier:
             if self._stop_event.is_set():
                 break
 
+            # Re-probe every 30s so pulling the model / starting Ollama mid-run takes effect.
+            if not vlm_ok and time.time() - last_check >= 30.0:
+                vlm_ok = self._model_available()
+                last_check = time.time()
+
             with self.lock:
                 if len(self.telemetry_history) < 2:
                     continue
@@ -190,9 +226,19 @@ class RealtimeLLMVerifier:
                 frame_snapshot = self.latest_frame.copy() if self.latest_frame is not None else None
                 objects_snapshot = list(self.latest_detected_objects)
 
-            result = self._query_llm_for_verification(
-                history_snapshot, frame=frame_snapshot, detected_objects=objects_snapshot
-            )
+            if vlm_ok:
+                result = self._query_llm_for_verification(
+                    history_snapshot, frame=frame_snapshot, detected_objects=objects_snapshot
+                )
+            else:
+                last = history_snapshot[-1]
+                result = self._fallback_deterministic_verification(
+                    last["heuristic_step"], last["step_name"],
+                    round(sum(h["lid_angle"] for h in history_snapshot) / len(history_snapshot), 1),
+                    sum(h["is_inside"] for h in history_snapshot) / len(history_snapshot),
+                    list(set(h["activity"] for h in history_snapshot[-8:])), last["anomaly"],
+                    current_activity=last.get("activity", "IDLE"),
+                )
             if result:
                 with self.lock:
                     self.latest_verification = result
@@ -217,8 +263,16 @@ class RealtimeLLMVerifier:
         spatial_str = "\n".join([f"  - {rel}" for rel in recent.get("spatial_relations", [])]) if recent.get("spatial_relations") else "  - None"
         recent_relations = spatial_str
 
+        is_bottle = "bottle" in self.experiment_id.lower()
         is_ry = "red_yellow" in self.experiment_id.lower() or "26174" in self.experiment_id
-        if is_ry:
+        if is_bottle:
+            protocol_desc = """- Step 0: IDLE (Bottle resting on surface, waiting for operator to take bottle)
+- Step 1: BOTTLE_TAKEN (Bottle grasped and lifted; opening cap is expected next; drinking now is an error)
+- Step 2: CAP_OPENED (Bottle cap unscrewed / opened; drinking water is expected next)
+- Step 3: DRINKING (Bottle raised to mouth and tilted; consuming water)
+- Step 4: CAP_CLOSED (Bottle cap closed and tightened onto bottle)
+- Step 5: BOTTLE_PUT_DOWN (Bottle placed back onto surface and released, procedure complete)"""
+        elif is_ry:
             protocol_desc = """- Step 0: IDLE (Container closed, waiting for operator to open box)
 - Step 1: CONTAINER_OPEN (Lid open >20 deg, red box must be extracted first; extracting yellow now is a WRONG MOVE)
 - Step 2: RED_EXTRACTED (Red box extracted and outside, yellow box to be extracted next)

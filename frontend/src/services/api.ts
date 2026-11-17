@@ -1,4 +1,6 @@
 const BASE_URL = 'http://localhost:8080';
+// Browser-camera ingest served by main.py --source browser (dashboard port + 1)
+const CAMERA_INGEST_URL = 'http://localhost:8081';
 
 export const API = {
   TELEMETRY:      `${BASE_URL}/telemetry`,
@@ -12,4 +14,5 @@ export const API = {
   START:          `${BASE_URL}/start`,
   SOURCE:         (set: string) => `${BASE_URL}/api/source?set=${encodeURIComponent(set)}`,
   EXPERIMENT:     (set: string) => `${BASE_URL}/api/experiment?set=${encodeURIComponent(set)}`,
+  CAMERA_FRAME:   `${CAMERA_INGEST_URL}/frame`,
 };

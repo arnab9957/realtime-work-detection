@@ -10,19 +10,39 @@ import os
 
 # Auto-switch to project virtual environment interpreter if launched via global python
 _workspace_dir = os.path.dirname(os.path.abspath(__file__))
-_venv_python = os.path.join(_workspace_dir, ".venv", "Scripts", "python.exe")
-if os.path.exists(_venv_python) and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
+_venv_candidates = [
+    os.path.join(_workspace_dir, ".venv", "bin", "python"),
+    os.path.join(_workspace_dir, ".venv", "Scripts", "python.exe"),
+]
+_venv_python = next((p for p in _venv_candidates if os.path.exists(p)), None)
+if _venv_python and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
     import subprocess
     sys.exit(subprocess.call([_venv_python] + sys.argv))
 
-_venv_site = os.path.join(_workspace_dir, ".venv", "Lib", "site-packages")
-if os.path.exists(_venv_site) and _venv_site not in sys.path:
-    sys.path.insert(0, _venv_site)
+import glob
+_venv_site_candidates = [
+    os.path.join(_workspace_dir, ".venv", "Lib", "site-packages"),
+    *glob.glob(os.path.join(_workspace_dir, ".venv", "lib", "python*", "site-packages")),
+]
+for _site in _venv_site_candidates:
+    if os.path.exists(_site) and _site not in sys.path:
+        sys.path.insert(0, _site)
 
+import math
 import time
 import argparse
 import cv2
 import numpy as np
+
+
+def is_display_available() -> bool:
+    """
+    Checks if a graphical display environment (X11, Wayland, Windows, macOS) is available.
+    Returns False on headless Linux environments where DISPLAY or WAYLAND_DISPLAY is not set.
+    """
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 # RelateAnything is now integrated directly
 try:
@@ -33,11 +53,12 @@ except ImportError as e:
     ScenePipeline = None
 
 # Core & Blackboard
-from src.core.types import FSMStep, AnomalyType
+from src.core.types import FSMStep, AnomalyType, EntityState
 from src.core.shared_memory import DigitalTwinBlackboard
 
 # 8 Specialized Agents + Real-Time Local LLM Verifier
 from src.agents.perception_agent import PerceptionAgent
+from src.agents.scene_object_agent import SceneObjectAgent
 from src.agents.imu_agent import IMUAgent
 from src.agents.fusion_agent import FusionAgent
 from src.agents.har_agent import HARAgent
@@ -61,7 +82,10 @@ def run_orchestrator(
     max_frames=None,
     realtime_feed_dir="realtime_feed",
     output_csv_dir=None,
-    record_har_dataset=False
+    record_har_dataset=False,
+    device=None,
+    enable_scene_objects=True,
+    vlm_model=None
 ):
     print("=" * 70)
     print("   BHARATIYA ANTARIKSH STATION (BAS) - ON-BOARD HAR MULTI-AGENT SYSTEM")
@@ -69,14 +93,38 @@ def run_orchestrator(
     print("   ISRO SIH Problem Statement #26174")
     print("=" * 70)
 
-    # Detect if source or protocol is the Red-Yellow experiment
+    # Check display availability for native GUI windows
+    display_ok = is_display_available()
+    if show_window and not display_ok:
+        print("[Orchestrator] Notice: No graphical display detected (headless environment). Native desktop window disabled.")
+        print(f"[*] Access the real-time stream and mission dashboard at: http://localhost:{stream_port}/")
+        show_window = False
+
+    if use_desktop_gui and not display_ok:
+        print("[Orchestrator] Notice: No graphical display detected. Disabling desktop Tkinter GUI.")
+        use_desktop_gui = False
+
+    # Detect if source or protocol is the Water-Bottle or Red-Yellow experiment
+    is_water_bottle = (
+        "bottle" in str(source).lower()
+        or (config_path is not None and "bottle" in str(config_path).lower())
+    )
     is_red_yellow = (
-        "red_yellow" in str(source).lower()
-        or "clip.mp4" in str(source).lower()
-        or (config_path is not None and "red_yellow" in str(config_path).lower())
+        not is_water_bottle and (
+            "red_yellow" in str(source).lower()
+            or "clip.mp4" in str(source).lower()
+            or (config_path is not None and "red_yellow" in str(config_path).lower())
+        )
     )
 
-    if is_red_yellow:
+    if is_water_bottle:
+        if config_path is None or "box_return" in str(config_path):
+            config_path = "configs/water_bottle_fsm.json"
+        if realtime_feed_dir == "realtime_feed":
+            realtime_feed_dir = "realtime_feed_bottle"
+        if output_csv_dir is None:
+            output_csv_dir = "experiments_water_bottle"
+    elif is_red_yellow:
         if config_path is None or "box_return" in str(config_path):
             config_path = "configs/red_yellow_fsm.json"
         if realtime_feed_dir == "realtime_feed":
@@ -97,15 +145,19 @@ def run_orchestrator(
     blackboard = DigitalTwinBlackboard()
 
     # 2. Instantiate Real-Time Asynchronous Local VLM Verifier (Ollama Qwen3-VL)
-    print("[Orchestrator] Engaging Multimodal VLM Real-Time Verifier (qwen3-vl:2b-instruct @ http://localhost:11434)...")
+    vlm_model = vlm_model or os.environ.get("BAS_VLM_MODEL", "qwen3-vl:2b-instruct")
+    print(f"[Orchestrator] Engaging Multimodal VLM Real-Time Verifier ({vlm_model} @ http://localhost:11434)...")
+    exp_id = "BAS-EXP-WATER-BOTTLE" if is_water_bottle else ("BAS-EXP-RED-YELLOW" if is_red_yellow else "BAS-EXP-BOX-RETURN")
     llm_verifier = RealtimeLLMVerifier(
-        model_name="qwen3-vl:2b-instruct",
-        experiment_id="BAS-EXP-RED-YELLOW" if is_red_yellow else "BAS-EXP-BOX-RETURN"
+        model_name=vlm_model,
+        experiment_id=exp_id
     )
 
     # 3. Instantiate the 8 Specialized Agents
     print("[Orchestrator] Initializing 8 Specialized Agents...")
-    agent_perception = PerceptionAgent()
+    chosen_detector = "models/water_bottle_yolo26.pt" if (is_water_bottle and os.path.exists("models/water_bottle_yolo26.pt")) else "models/detector_offline.pt"
+    agent_perception = PerceptionAgent(model_path=chosen_detector, device=device)
+    agent_scene = SceneObjectAgent(device=device) if enable_scene_objects else None
     agent_imu = IMUAgent()
     agent_fusion = FusionAgent()
     agent_spatial = SpatialAgent()
@@ -126,6 +178,8 @@ def run_orchestrator(
     def reset_pipeline():
         """Cleanly resets all 8 agents, LLM verifier, and blackboard for a fresh run."""
         agent_perception.reset()
+        if agent_scene:
+            agent_scene.reset()
         agent_imu.reset()
         agent_fusion.reset()
         agent_har.reset()
@@ -146,7 +200,7 @@ def run_orchestrator(
             print("[Orchestrator] Desktop Mission Control GUI initialized (single unified window).")
         except Exception as e:
             print(f"[Orchestrator] Desktop GUI warning: {e}. Falling back to Web/OpenCV mode.")
-            show_window = True
+            show_window = is_display_available()
 
     # Spatial relations log file
     spatial_log_path = os.path.join(output_csv_dir, f"spatial_relations_{time.strftime('%Y-%m-%d_%H-%M-%S')}.txt")
@@ -182,7 +236,13 @@ def run_orchestrator(
                 pass
         return None
 
-    if str(source).lower() == "auto":
+    if str(source).lower() == "browser":
+        from src.streaming.browser_capture import BrowserCapture
+        browser_port = stream_port + 1
+        cap = BrowserCapture(port=browser_port)
+        source_type = "LIVE_WEBCAM"
+        print(f"[Orchestrator] Browser camera ingest ready. Open http://localhost:{browser_port}/ on the camera device and press 'Start camera'.")
+    elif str(source).lower() == "auto":
         print("[Orchestrator] Probing physical camera hardware for live real-time detection...")
         cap = open_hardware_camera(0)
         if cap is not None:
@@ -192,14 +252,21 @@ def run_orchestrator(
 
         if cap is None:
             print("[Orchestrator] Notice: No physical camera accessible. Falling back to recorded demo clip...")
-            fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
-            if not os.path.exists(fallback_source):
-                print(f"[Orchestrator] Generating simulation video '{fallback_source}'...")
-                from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source)
+            if is_water_bottle:
+                fallback_source = "demo_bottle.mp4"
+                if not os.path.exists(fallback_source):
+                    print(f"[Orchestrator] Generating bottle simulation video '{fallback_source}'...")
+                    from tools.generate_bottle_synthetic_data import generate_bottle_simulation_video
+                    generate_bottle_simulation_video(fallback_source)
+            else:
+                fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
+                if not os.path.exists(fallback_source):
+                    print(f"[Orchestrator] Generating simulation video '{fallback_source}'...")
+                    from tools.generate_synthetic_data import generate_experiment_video
+                    generate_experiment_video(fallback_source)
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
-            source_type = "RECORDED_CLIP"
+            source_type = "WATER_BOTTLE" if is_water_bottle else "RECORDED_CLIP"
     elif str(source).isdigit():
         cam_idx = int(source)
         cap = open_hardware_camera(cam_idx)
@@ -216,25 +283,41 @@ def run_orchestrator(
 
         if cap is None or not cap.isOpened():
             print(f"[Warning] Web Camera device #{source} could not be opened (disconnected or in use).")
-            fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
-            if not os.path.exists(fallback_source):
-                from tools.generate_synthetic_data import generate_experiment_video
-                generate_experiment_video(fallback_source)
+            if is_water_bottle:
+                fallback_source = "demo_bottle.mp4"
+                if not os.path.exists(fallback_source):
+                    from tools.generate_bottle_synthetic_data import generate_bottle_simulation_video
+                    generate_bottle_simulation_video(fallback_source)
+            else:
+                fallback_source = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
+                if not os.path.exists(fallback_source):
+                    from tools.generate_synthetic_data import generate_experiment_video
+                    generate_experiment_video(fallback_source)
             print(f"[Orchestrator] Automatically falling back to video: '{fallback_source}'...")
             cap = cv2.VideoCapture(fallback_source)
             source = fallback_source
-            source_type = "RECORDED_CLIP"
+            source_type = "WATER_BOTTLE" if is_water_bottle else "RECORDED_CLIP"
         else:
             cw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             ch = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             print(f"[Orchestrator] Ingesting from Web Camera device #{source} ({cw}x{ch}, buffer=1 real-time)...")
     else:
         if not os.path.exists(source):
-            print(f"[Orchestrator] Video file '{source}' not found. Generating default simulation...")
-            from tools.generate_synthetic_data import generate_experiment_video
-            generate_experiment_video(source)
+            if is_water_bottle or "bottle" in str(source).lower():
+                print(f"[Orchestrator] Video file '{source}' not found. Generating bottle simulation...")
+                from tools.generate_bottle_synthetic_data import generate_bottle_simulation_video
+                generate_bottle_simulation_video(source)
+            else:
+                print(f"[Orchestrator] Video file '{source}' not found. Generating default simulation...")
+                from tools.generate_synthetic_data import generate_experiment_video
+                generate_experiment_video(source)
         cap = cv2.VideoCapture(source)
-        source_type = "RED_YELLOW" if "red_yellow" in str(source).lower() else "RECORDED_CLIP"
+        if "bottle" in str(source).lower() or is_water_bottle:
+            source_type = "WATER_BOTTLE"
+        elif "red_yellow" in str(source).lower():
+            source_type = "RED_YELLOW"
+        else:
+            source_type = "RECORDED_CLIP"
         print(f"[Orchestrator] Ingesting from Video File: {source}...")
 
     if not cap.isOpened():
@@ -313,10 +396,29 @@ def run_orchestrator(
                     agent_validation = ValidationAgent(config_path=new_exp_req)
                     agent_validation.load_protocol(new_exp_req)
                     agent_reasoning = ReasoningAgent(config_path=new_exp_req)
-                    if ("red_yellow" in new_exp_req or "experiment_fsm" in new_exp_req):
+                    if ("bottle" in new_exp_req or "water_bottle" in new_exp_req):
+                        is_water_bottle = True
+                        is_red_yellow = False
+                        agent_monitoring.switch_output_dir(output_dir="experiments_water_bottle", realtime_feed_dir="realtime_feed_bottle")
+                        if os.path.exists("demo_bottle.mp4") and source_type in ("RECORDED_CLIP", "RED_YELLOW", "WATER_BOTTLE"):
+                            target_clip = "demo_bottle.mp4"
+                            new_cap = cv2.VideoCapture(target_clip)
+                            if new_cap.isOpened():
+                                if cap is not None:
+                                    cap.release()
+                                cap = new_cap
+                                source = target_clip
+                                source_type = "WATER_BOTTLE"
+                                print(f"[Orchestrator] Auto-switched video feed to {target_clip} for Water Bottle procedure.")
+                        if os.path.exists("models/water_bottle_yolo26.pt"):
+                            agent_perception.load_detector("models/water_bottle_yolo26.pt")
+                    elif ("red_yellow" in new_exp_req or "experiment_fsm" in new_exp_req):
+                        is_water_bottle = False
                         is_red_yellow = True
                         agent_monitoring.switch_output_dir(output_dir="experiments_red_yellow", realtime_feed_dir="realtime_feed_red_yellow")
-                        if os.path.exists("red_yellow.mp4") and source_type in ("RECORDED_CLIP", "RED_YELLOW"):
+                        if agent_perception.is_bottle_model:
+                            agent_perception.load_detector("models/detector_offline.pt")
+                        if os.path.exists("red_yellow.mp4") and source_type in ("RECORDED_CLIP", "RED_YELLOW", "WATER_BOTTLE"):
                             target_clip = "red_yellow.mp4"
                             new_cap = cv2.VideoCapture(target_clip)
                             if new_cap.isOpened():
@@ -327,9 +429,12 @@ def run_orchestrator(
                                 source_type = "RED_YELLOW"
                                 print(f"[Orchestrator] Auto-switched video feed to {target_clip} for Red-Yellow procedure.")
                     elif "box_return_fsm" in new_exp_req:
+                        is_water_bottle = False
                         is_red_yellow = False
                         agent_monitoring.switch_output_dir(output_dir="experiments", realtime_feed_dir="realtime_feed")
-                        if source_type in ("RECORDED_CLIP", "RED_YELLOW"):
+                        if agent_perception.is_bottle_model:
+                            agent_perception.load_detector("models/detector_offline.pt")
+                        if source_type in ("RECORDED_CLIP", "RED_YELLOW", "WATER_BOTTLE"):
                             target_clip = "clip1.mp4" if os.path.exists("clip1.mp4") else "clip.mp4"
                             if os.path.exists(target_clip):
                                 new_cap = cv2.VideoCapture(target_clip)
@@ -340,7 +445,9 @@ def run_orchestrator(
                                     source = target_clip
                                     source_type = "RECORDED_CLIP"
                                     print(f"[Orchestrator] Auto-switched video feed to {target_clip} for Box Return procedure.")
-                    if "red_yellow" in new_exp_req:
+                    if "bottle" in new_exp_req:
+                        llm_verifier.set_protocol("BAS-EXP-WATER-BOTTLE")
+                    elif "red_yellow" in new_exp_req:
                         llm_verifier.set_protocol("BAS-EXP-RED-YELLOW")
                     elif "box_return" in new_exp_req:
                         llm_verifier.set_protocol("BAS-EXP-BOX-RETURN")
@@ -362,7 +469,8 @@ def run_orchestrator(
                 prev_frame_time = time.time()
             elif web_start:
                 print("\n[Orchestrator] Start/Restart requested from UI...")
-                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= (5 if is_red_yellow else 4):
+                max_step_thresh = 5 if (is_red_yellow or is_water_bottle) else 4
+                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= max_step_thresh:
                     if not str(source).isdigit():
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     reset_pipeline()
@@ -407,7 +515,7 @@ def run_orchestrator(
                     continue
 
                 # If experiment reached COMPLETE, hold final completed state for 3s so user/web client sees completion
-                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= (5 if is_red_yellow else 4):
+                if agent_validation.current_step in (FSMStep.COMPLETE, FSMStep.BOX_CLOSED) or int(agent_validation.current_step) >= (5 if (is_red_yellow or is_water_bottle) else 4):
                     print("\n[Orchestrator] Procedure COMPLETED successfully! Holding final state for 3 seconds...")
                     t_hold_end = time.time() + 3.0
                     while time.time() < t_hold_end:
@@ -549,7 +657,8 @@ def run_orchestrator(
             procedural_stems = (
                 "IDLE", "OBSERVING", "CONTAINER", "BOX", "LID", "COMPONENT",
                 "RED", "YELLOW", "GRASP", "PICK", "RETURN", "EXTRACT",
-                "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY"
+                "APPROACH", "CONTACT", "HOLD", "DOCKED", "STANDBY",
+                "BOTTLE", "CAP", "DRINK", "DRINKING", "WATER", "POUR", "TAKE", "PUT"
             )
 
             if llm_verif:
@@ -588,6 +697,71 @@ def run_orchestrator(
                         pred = r.predicate.upper()
                         if pred not in ("HOLDING", "TOUCHING", "LOOKING AT", "STANDING NEXT TO", "NEAR", "NONE"):
                             current_activity = pred
+
+            # Kinematic & Spatial Evaluation for Water Bottle Manipulation Experiment
+            if is_water_bottle:
+                b_obj = objects_state.get("bottle")
+                c_obj = objects_state.get("bottle_cap") or objects_state.get("cap")
+                hand_obj = objects_state.get("operator_hand") or objects_state.get("hand")
+                
+                if b_obj and b_obj.bbox:
+                    b_cx, b_cy = b_obj.bbox.centroid
+                    b_top_x = b_cx
+                    b_top_y = b_obj.bbox.ymin
+                    b_w = b_obj.bbox.xmax - b_obj.bbox.xmin
+                    b_h = b_obj.bbox.ymax - b_obj.bbox.ymin
+
+                    # 1. Surface resting vs held / elevated
+                    if hand_obj and hand_obj.bbox:
+                        h_cx, h_cy = hand_obj.bbox.centroid
+                        d_hb = math.hypot(h_cx - b_cx, h_cy - b_cy)
+                        is_hand_near = d_hb < max(120.0, b_w * 2.2)
+                    else:
+                        is_hand_near = (b_obj.bbox.ymax < 540)
+
+                    if b_obj.bbox.ymax < 540 or (is_hand_near and b_cy < 510):
+                        b_obj.on_surface = False
+                        b_obj.state = EntityState.EXTRACTED
+                    else:
+                        b_obj.on_surface = True
+                        b_obj.state = EntityState.DOCKED
+
+                    # 2. Cap state (Open vs Closed)
+                    if c_obj and c_obj.bbox:
+                        c_cx, c_cy = c_obj.bbox.centroid
+                        dist_top_cap = math.hypot(c_cx - b_top_x, c_cy - b_top_y)
+                        if dist_top_cap > 55.0:
+                            b_obj.cap_open = True
+                            c_obj.state = EntityState.EXTRACTED
+                        else:
+                            b_obj.cap_open = False
+                            c_obj.state = EntityState.DOCKED
+                    elif not b_obj.on_surface and agent_validation.current_step in (FSMStep.CAP_OPENED, FSMStep.DRINKING):
+                        b_obj.cap_open = True
+
+                    # 3. Distance to mouth & drinking tilt
+                    mouth_pt = None
+                    if fused_pose.keypoints_2d and "nose" in fused_pose.keypoints_2d:
+                        nx, ny, _ = fused_pose.keypoints_2d["nose"]
+                        mouth_pt = (nx, ny + 15)
+                    elif objects_state.get("human_body") and objects_state["human_body"].bbox:
+                        hb = objects_state["human_body"].bbox
+                        mouth_pt = (hb.centroid[0], hb.ymin + 60)
+
+                    if mouth_pt:
+                        d_mouth = math.hypot(b_top_x - mouth_pt[0], b_top_y - mouth_pt[1])
+                        b_obj.dist_to_mouth = d_mouth / 650.0
+                        b_obj.near_mouth = (d_mouth < 130.0)
+                    else:
+                        b_obj.dist_to_mouth = 0.50
+                        b_obj.near_mouth = False
+
+                    # 4. Tilt Angle
+                    if b_obj.near_mouth:
+                        b_obj.tilt_angle = 35.0
+                    else:
+                        aspect = b_w / max(1.0, b_h)
+                        b_obj.tilt_angle = min(75.0, max(0.0, (aspect - 0.30) * 120.0))
 
             # AGENT 5: Digital Twin Agent (3D Scene Synchronization & Render)
             scene_graph = agent_twin.sync_scene_state(
@@ -658,6 +832,15 @@ def run_orchestrator(
             blackboard.update_fsm_state(step, deb_count, anomaly, anomaly_msg, instruction)
             blackboard.update_llm_verification(llm_verif)
 
+            # Open-vocabulary scene objects & human-object interactions (display / telemetry only)
+            scene_objects = []
+            if agent_scene and agent_scene.enabled:
+                scene_objects = agent_scene.process(raw_frame, fused_pose, objects_state)
+                scene_activity = SceneObjectAgent.summarize(scene_objects)
+                if scene_activity and current_activity == "IDLE":
+                    current_activity = scene_activity
+                SceneObjectAgent.draw(raw_frame, scene_objects)
+
             # AGENT 8: Monitoring Agent (Dual Video + Offline TTS + JSONL + HUD Overlay + Action Logger)
             annotated_frame = agent_monitoring.process_egress(
                 raw_frame=raw_frame,
@@ -681,7 +864,8 @@ def run_orchestrator(
                 step_verdict=agent_validation.step_verdict,
                 experiment_id=agent_validation.experiment_id,
                 scene_graph=scene_graph,
-                spatial_relations=spatial_relations
+                spatial_relations=spatial_relations,
+                scene_objects=scene_objects
             )
 
             # On-Screen Video Feed Display (Native OpenCV Window, only if Desktop GUI is NOT active)
@@ -704,6 +888,10 @@ def run_orchestrator(
                         analyze_session()
                 except Exception:
                     pass
+            else:
+                # Pace playback for recorded video in headless mode so web stream is smooth
+                if source_type in ("RECORDED_CLIP", "RED_YELLOW"):
+                    time.sleep(0.015)
 
             # Update Desktop Tkinter GUI if active
             if desktop_gui:
@@ -715,11 +903,12 @@ def run_orchestrator(
                 desktop_gui.update_state(int(step), instruction, anomaly.value, log_snippet)
 
             # Procedure Step Event Commit
+            step_variant = "bottle" if is_water_bottle else ("dual" if is_red_yellow else False)
             if trans_event:
-                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.get_name(is_red_yellow)})")
+                print(f"\n[PROCEDURE EVENT] Milestone Committed: {trans_event} -> Step {int(step)} ({step.get_name(step_variant)})")
 
             # Procedural Completion: Trigger Automated Offline Local LLM Audit (Async / Non-Blocking)
-            if trans_event in ("BOX_CLOSED", "YELLOW_BOX_EXTRACTED", "BENCHMARK_COMPLETE"):
+            if trans_event in ("BOX_CLOSED", "YELLOW_BOX_EXTRACTED", "BENCHMARK_COMPLETE", "BOTTLE_PUT_DOWN", "DRINKING_COMPLETE"):
                 print("\n" + "=" * 70)
                 print(f"[Orchestrator] PROCEDURE COMPLETED ({trans_event})! Launching Non-Blocking AI Mission Audit in background...")
                 print("=" * 70)
@@ -738,7 +927,7 @@ def run_orchestrator(
                 vlm_wrong = llm_verif.get("what_is_wrong", "None")
                 wrong_disp = f" | Issue: {vlm_wrong[:35]}" if (vlm_wrong != "None" and not agent_validation.is_step_correct) else ""
                 sys.stdout.write(
-                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.get_name(is_red_yellow):16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
+                    f"\r[{source_type[:4]}] F{frame_id:04d} | Step {int(step)}: {step.get_name(step_variant):16s} | Verdict: {v_disp} | LLM: {llm_disp:10s} | Deb: {deb_count:02d}/06 | FPS: {fps:4.1f}{wrong_disp}  "
                 )
                 sys.stdout.flush()
 
@@ -761,7 +950,8 @@ def run_orchestrator(
             pass
 
         try:
-            cv2.destroyAllWindows()
+            if show_window and is_display_available():
+                cv2.destroyAllWindows()
         except (Exception, KeyboardInterrupt):
             pass
 
@@ -818,7 +1008,7 @@ def run_orchestrator(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BAS Multi-Agent HAR Orchestrator")
     parser.add_argument("--source", default="auto",
-                        help="Video source: 'auto' (default: probes physical webcam #0, falls back to demo clip), camera index (0), or path to MP4")
+                        help="Video source: 'auto' (default: probes physical webcam #0, falls back to demo clip), camera index (0), 'browser' (remote webcam streamed from a browser on --port + 1), or path to MP4")
     parser.add_argument("--config", default=None,
                         help="Path to FSM configuration file (default: auto-detected)")
     parser.add_argument("--desktop-gui", action="store_true",
@@ -841,20 +1031,38 @@ if __name__ == "__main__":
                         help="Launch real-time Common Object Detection mode (COCO-80 classes: phone, bottle, cup, person, book, etc.)")
     parser.add_argument("--record-har-dataset", action="store_true",
                         help="Record and export synchronized 3D skeleton and HAR action dataset (.npz)")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Inference device: 'cuda', 'cuda:0', 'cpu', or None for auto (CUDA if available)")
+    parser.add_argument("--no-scene-objects", action="store_true",
+                        help="Disable open-vocabulary detection of all scene objects and human-object interactions")
+    parser.add_argument("--vlm-model", type=str, default=None,
+                        help="Ollama VLM used for real-time verification (default: $BAS_VLM_MODEL or qwen3-vl:2b-instruct)")
     args = parser.parse_args()
 
     if args.common:
         from tools.realtime_detect import run_realtime_detection
-        run_realtime_detection(source=args.source, conf_threshold=0.30, max_frames=args.frames)
+        run_realtime_detection(
+            source=args.source,
+            conf_threshold=0.30,
+            max_frames=args.frames,
+            headless=not is_display_available() or args.no_window,
+            device=args.device
+        )
         sys.exit(0)
 
     try:
+        # Check if graphical display is available
+        has_display = is_display_available()
         # If desktop GUI is requested, suppress the duplicate raw OpenCV window
-        show_win = not args.no_window and not args.desktop_gui
+        show_win = not args.no_window and not args.desktop_gui and has_display
+        use_gui = args.desktop_gui and has_display
+        if args.desktop_gui and not has_display:
+            print("[Warning] --desktop-gui requested but no graphical display is available (headless).")
+
         run_orchestrator(
             source=args.source,
             config_path=args.config,
-            use_desktop_gui=args.desktop_gui,
+            use_desktop_gui=use_gui,
             show_window=show_win,
             enable_tts=not args.no_tts,
             enable_streaming=not args.no_stream,
@@ -862,7 +1070,10 @@ if __name__ == "__main__":
             max_frames=args.frames,
             realtime_feed_dir=args.realtime_dir,
             output_csv_dir=args.output_dir,
-            record_har_dataset=args.record_har_dataset
+            record_har_dataset=args.record_har_dataset,
+            device=args.device,
+            enable_scene_objects=not args.no_scene_objects,
+            vlm_model=args.vlm_model
         )
     except KeyboardInterrupt:
         sys.exit(0)

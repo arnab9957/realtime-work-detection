@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Layers, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { STEP_LABELS, RED_YELLOW_STEPS } from '../../mock/fallbackData';
+import { Layers, ArrowRight, CheckCircle2, AlertTriangle, Video, VideoOff } from 'lucide-react';
+import { getStepsForExperiment, getStepLabel } from '../../mock/fallbackData';
+import { useBrowserCamera } from '../../hooks/useBrowserCamera';
 import { API } from '../../services/api';
 import type { TelemetryData } from '../../types/api';
 import { SmoothNumber, AnimatedText } from '../common/SmoothData';
@@ -13,6 +14,19 @@ export function Camera1({ telemetry }: Camera1Props) {
   const imgRef = useRef<HTMLImageElement>(null);
   const fallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [streamBroken, setStreamBroken] = useState(false);
+  const camera = useBrowserCamera();
+
+  const reconnectStream = () => {
+    setStreamBroken(false);
+    if (imgRef.current) {
+      imgRef.current.src = `${API.STREAM}?t=${Date.now()}`;
+    }
+  };
+
+  // Reconnect the MJPEG stream when the experiment or the camera feed changes
+  useEffect(() => {
+    if (camera.status === 'streaming' || camera.status === 'off') reconnectStream();
+  }, [telemetry.experiment_id, camera.status]);
 
   useEffect(() => {
     const img = imgRef.current;
@@ -42,12 +56,7 @@ export function Camera1({ telemetry }: Camera1Props) {
       }
     };
 
-    const onSourceSwitch = () => {
-      setStreamBroken(false);
-      if (imgRef.current) {
-        imgRef.current.src = `${API.STREAM}?t=${Date.now()}`;
-      }
-    };
+    const onSourceSwitch = () => reconnectStream();
 
     img.addEventListener('error', onError);
     img.addEventListener('load', onLoad);
@@ -61,7 +70,8 @@ export function Camera1({ telemetry }: Camera1Props) {
   }, []);
 
   const anomalyActive = telemetry.anomaly && telemetry.anomaly !== 'NONE';
-  const prevStepLabel = resolvePrevStepLabel(telemetry.step_name, telemetry.step);
+  const prevStepLabel = resolvePrevStepLabel(telemetry.experiment_id, telemetry.step);
+  const cameraOn = camera.status === 'streaming' || camera.status === 'starting';
 
   return (
     <div className="panel camera1-panel">
@@ -71,8 +81,22 @@ export function Camera1({ telemetry }: Camera1Props) {
           <span className="panel-title">Camera 01 — HAR Output</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            className={`cam-toggle-btn ${cameraOn ? 'cam-on' : ''} ${camera.status === 'error' ? 'cam-err' : ''}`}
+            onClick={cameraOn ? camera.stop : camera.start}
+            title={camera.error || (cameraOn ? 'Stop sending this browser\'s webcam' : 'Send this browser\'s webcam to the pipeline')}
+          >
+            {cameraOn ? <VideoOff size={12} strokeWidth={2} /> : <Video size={12} strokeWidth={2} />}
+            <span>
+              {camera.status === 'starting' ? 'Starting…'
+                : camera.status === 'streaming' ? `Stop Camera · ${camera.uploadFps} fps`
+                : camera.status === 'error' ? 'Camera Error — Retry'
+                : 'Start Camera'}
+            </span>
+          </button>
           <span className="feed-source-chip font-mono">
-            {telemetry.source_type === 'LIVE_WEBCAM' ? 'LIVE CAM #0' : 'DUMMY (c1.mp4)'}
+            {telemetry.source_type === 'LIVE_WEBCAM' ? 'LIVE CAMERA' : 'RECORDED CLIP'}
           </span>
           <span className={`feed-badge ${streamBroken ? 'badge-warn' : 'badge-live'}`}>
             {streamBroken ? 'Snapshot Mode' : 'Live Stream'}
@@ -206,13 +230,13 @@ function InfoBlock({
   );
 }
 
-function resolvePrevStepLabel(_currentStepName: string, stepIdx: number): string {
+function resolvePrevStepLabel(experimentId: string, stepIdx: number): string {
   if (stepIdx <= 0) return '—';
   const prevStepIdx = stepIdx - 1;
-  const steps = RED_YELLOW_STEPS;
+  const steps = getStepsForExperiment(experimentId);
   if (prevStepIdx >= 0 && prevStepIdx < steps.length) {
     const prevKey = steps[prevStepIdx].key;
-    return STEP_LABELS[prevKey] || steps[prevStepIdx].label || `Step ${prevStepIdx}`;
+    return getStepLabel(experimentId, prevKey) || steps[prevStepIdx].label || `Step ${prevStepIdx}`;
   }
   return `Step ${prevStepIdx}`;
 }

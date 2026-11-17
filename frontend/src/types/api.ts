@@ -5,6 +5,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── /telemetry ───────────────────────────────────────────────────────────────
+export interface SceneObject {
+  label: string;
+  conf: number;
+  bbox: [number, number, number, number];
+  interaction: 'HOLDING' | 'TOUCHING' | 'NEAR' | 'NONE';
+}
+
 export interface TelemetryData {
   frame_id: number;
   fps: number;
@@ -23,6 +30,7 @@ export interface TelemetryData {
   debounce?: number;
   debounce_max?: number;
   lid_angle?: number;
+  scene_objects?: SceneObject[];
 }
 
 // ── /api/digital_twin ────────────────────────────────────────────────────────

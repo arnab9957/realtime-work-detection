@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BAS | Live YOLO26 Detection</title>
+  <style>
+    body {
+      margin: 0; padding: 24px;
+      background: #0b1020; color: #e8eefc;
+      font-family: system-ui, sans-serif;
+    }
+    main { max-width: 1000px; margin: auto; }
+    h1 { margin-bottom: 6px; }
+    p { color: #a9b6d3; }
+    .panel {
+      background: #141c30; border: 1px solid #293550;
+      border-radius: 14px; padding: 16px; margin-top: 18px;
+    }
+    .screen {
+      width: 100%; aspect-ratio: 16/9; background: #050811;
+      border-radius: 10px; overflow: hidden;
+      display: grid; place-items: center;
+    }
+    .screen img { width: 100%; height: 100%; object-fit: contain; }
+    video { display: none; }
+    button {
+      padding: 11px 18px; border: 0; border-radius: 8px;
+      cursor: pointer; font-weight: 650; margin: 8px 8px 0 0;
+    }
+    #start { background: #78a9ff; color: #091126; }
+    #stop { background: #35415b; color: white; }
+    #status { color: #9edbb5; }
+    .meta { display: flex; gap: 20px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>BAS · Live Object Detection</h1>
+  <p>YOLO26m · NVIDIA DGX Spark · CUDA inference</p>
+
+  <section class="panel">
+    <div class="meta">
+      <span id="status">Not connected</span>
+      <span id="fps">Inference: —</span>
+    </div>
+    <button id="start">Start webcam</button>
+    <button id="stop" disabled>Stop</button>
+    <div class="screen">
+      <img id="output" alt="Annotated webcam feed">
+    </div>
+    <p>Allow camera access when your browser asks. Keep this tab open during detection.</p>
+  </section>
+
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" hidden></canvas>
+</main>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const output = document.getElementById("output");
+const status = document.getElementById("status");
+const fps = document.getElementById("fps");
+const start = document.getElementById("start");
+const stop = document.getElementById("stop");
+
+let stream = null;
+let socket = null;
+let timer = null;
+let waiting = false;
+let active = false;
+let lastFrameTime = 0;
+let frameCount = 0;
+let previousUrl = null;
+
+function cleanup() {
+  active = false;
+  clearInterval(timer);
+  timer = null;
+  waiting = false;
+
+  if (socket) {
+    const oldSocket = socket;
+    socket = null;
+    if (oldSocket.readyState < WebSocket.CLOSING) oldSocket.close();
+  }
+
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  stream = null;
+  video.srcObject = null;
+
+  if (previousUrl) URL.revokeObjectURL(previousUrl);
+  previousUrl = null;
+  output.removeAttribute("src");
+
+  start.disabled = false;
+  stop.disabled = true;
+}
+
+start.onclick = async () => {
+  start.disabled = true;
+  status.textContent = "Opening camera…";
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+
+    video.srcObject = stream;
+    await video.play();
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    socket = new WebSocket(
+      `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`
+    );
+    socket.binaryType = "arraybuffer";
+
+    socket.onopen = () => {
+      if (!stream) return;
+      active = true;
+      stop.disabled = false;
+      status.textContent = "Connected · GPU inference running";
+      lastFrameTime = performance.now();
+      frameCount = 0;
+
+      // Send the next frame only after the previous response arrives.
+      timer = setInterval(() => {
+        if (!active || waiting || socket.readyState !== WebSocket.OPEN) return;
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        waiting = true;
+
+        canvas.toBlob(blob => {
+          if (!active || !blob || socket.readyState !== WebSocket.OPEN) {
+            waiting = false;
+            return;
+          }
+          blob.arrayBuffer().then(buffer => {
+            if (active && socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(buffer);
+            } else {
+              waiting = false;
+            }
+          }).catch(() => { waiting = false; });
+        }, "image/jpeg", 0.75);
+      }, 50);
+    };
+
+    socket.onmessage = event => {
+      if (!active) return;
+      const url = URL.createObjectURL(
+        new Blob([event.data], { type: "image/jpeg" })
+      );
+      const oldUrl = previousUrl;
+      previousUrl = url;
+      output.onload = () => { if (oldUrl) URL.revokeObjectURL(oldUrl); };
+      output.src = url;
+
+      waiting = false;
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFrameTime >= 1000) {
+        fps.textContent =
+          `Inference: ${(frameCount * 1000 / (now - lastFrameTime)).toFixed(1)} FPS`;
+        frameCount = 0;
+        lastFrameTime = now;
+      }
+    };
+
+    socket.onerror = () => {
+      status.textContent = "Connection error — check the Spark server";
+    };
+    socket.onclose = () => {
+      if (active) status.textContent = "Connection closed";
+      cleanup();
+    };
+  } catch (error) {
+    cleanup();
+    status.textContent = `Could not start: ${error.message}`;
+  }
+};
+
+stop.onclick = () => {
+  cleanup();
+  status.textContent = "Stopped";
+  fps.textContent = "Inference: —";
+};
+</script>
+</body>
+</html>

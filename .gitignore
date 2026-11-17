@@ -26,7 +26,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-*.txt
 
 # Virtual Environments
 venv/
@@ -137,3 +136,31 @@ agenticSTAR-main
 distance_calc
 models.zip
 dataset.zip
+# Water bottle experiments, feeds & training runs
+experiments/yolo26_training/
+experiments_water_bottle/
+realtime_feed_bottle/
+
+# Generated text logs (spatial relation logs etc.) - NOT requirements.txt / docs
+experiments/*.txt
+experiments_*/*.txt
+realtime_feed*/*.txt
+
+# Frontend (Vite/React) build artifacts & dependencies
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.tsbuildinfo
+
+# Stray root-level npm lockfile (the real one lives in frontend/)
+/package-lock.json
+/node_modules/
+
+# Large archives & third-party model dumps (e.g. SMPL-X, datasets) - never commit
+*.zip
+third_party/*.zip
+third_party/models_smplx*/
+
+# Other generated experiment output
+experiments/session_actions.json
+.pytest_cache/

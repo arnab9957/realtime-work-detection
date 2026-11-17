@@ -97,6 +97,16 @@ export const STEP_LABELS: Record<string, string> = {
   BOX_CLOSED: 'Man closing the box container',
   COMPLETE: 'Man standing — procedure complete',
   DUAL_COMPLETE: 'Dual experiment procedure complete',
+  BOTTLE_TAKEN: 'Man taking the water bottle',
+  CAP_OPENED: 'Man opening the bottle cap',
+  DRINKING: 'Man drinking water',
+  CAP_CLOSED: 'Man closing the bottle cap',
+};
+
+// Water bottle procedure overrides labels that are shared with the box experiments
+const WATER_BOTTLE_LABELS: Record<string, string> = {
+  IDLE: 'Bottle resting on the surface',
+  COMPLETE: 'Bottle put down — procedure complete',
 };
 
 export interface ProcessStep {
@@ -124,6 +134,43 @@ export const BOX_RETURN_STEPS: ProcessStep[] = [
   { key: 'OBJECT_RETURNED', aliases: ['RETURN_OBJECT'], label: 'Return Object into Box', shortLabel: 'Return Object' },
   { key: 'COMPLETE', aliases: ['BOX_CLOSED'], label: 'Close Box & Complete', shortLabel: 'Complete' },
 ];
+
+// Water bottle procedure (BAS-EXP-WATER-BOTTLE)
+export const WATER_BOTTLE_STEPS: ProcessStep[] = [
+  { key: 'IDLE', aliases: ['STANDBY'], label: 'Standby / Bottle On Surface', shortLabel: 'Standby' },
+  { key: 'BOTTLE_TAKEN', label: 'Take Bottle', shortLabel: 'Take Bottle' },
+  { key: 'CAP_OPENED', label: 'Open Bottle Cap', shortLabel: 'Open Cap' },
+  { key: 'DRINKING', label: 'Drink Water', shortLabel: 'Drink' },
+  { key: 'CAP_CLOSED', label: 'Close Bottle Cap', shortLabel: 'Close Cap' },
+  { key: 'COMPLETE', label: 'Put Down Bottle & Complete', shortLabel: 'Put Down' },
+];
+
+export interface ExperimentOption {
+  /** Value sent to /api/experiment?set= */
+  set: string;
+  /** Telemetry experiment_id values that belong to this option */
+  ids: string[];
+  label: string;
+}
+
+export const EXPERIMENTS: ExperimentOption[] = [
+  { set: 'red_yellow', ids: ['BAS-EXP-26174', 'BAS-EXP-RED-YELLOW'], label: 'Red-Yellow Boxes' },
+  { set: 'box_return', ids: ['BAS-EXP-BOX-RETURN'], label: 'Box Return' },
+  { set: 'water_bottle', ids: ['BAS-EXP-WATER-BOTTLE'], label: 'Water Bottle' },
+];
+
+export function getStepsForExperiment(experimentId?: string): ProcessStep[] {
+  if (experimentId?.includes('WATER-BOTTLE')) return WATER_BOTTLE_STEPS;
+  if (experimentId?.includes('BOX-RETURN')) return BOX_RETURN_STEPS;
+  return RED_YELLOW_STEPS;
+}
+
+export function getStepLabel(experimentId: string | undefined, stepName: string): string | undefined {
+  if (experimentId?.includes('WATER-BOTTLE') && WATER_BOTTLE_LABELS[stepName]) {
+    return WATER_BOTTLE_LABELS[stepName];
+  }
+  return STEP_LABELS[stepName];
+}
 
 // Default ordered process steps for the timeline display
 export const PROCESS_STEPS = RED_YELLOW_STEPS;

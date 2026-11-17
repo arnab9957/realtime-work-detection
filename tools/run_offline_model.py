@@ -16,19 +16,28 @@ import cv2
 import numpy as np
 
 # Ensure workspace root in path
-WORKSPACE_ROOT = os.path.dirname(os.path.abspath(__file__))
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
 
 # Auto-switch to project virtual environment interpreter if launched via global python
-_venv_python = os.path.join(WORKSPACE_ROOT, ".venv", "Scripts", "python.exe")
-if os.path.exists(_venv_python) and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
+_venv_candidates = [
+    os.path.join(WORKSPACE_ROOT, ".venv", "bin", "python"),
+    os.path.join(WORKSPACE_ROOT, ".venv", "Scripts", "python.exe"),
+]
+_venv_python = next((p for p in _venv_candidates if os.path.exists(p)), None)
+if _venv_python and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
     import subprocess
     sys.exit(subprocess.call([_venv_python] + sys.argv))
 
-_venv_site = os.path.join(WORKSPACE_ROOT, ".venv", "Lib", "site-packages")
-if os.path.exists(_venv_site) and _venv_site not in sys.path:
-    sys.path.insert(0, _venv_site)
+import glob
+_venv_site_candidates = [
+    os.path.join(WORKSPACE_ROOT, ".venv", "Lib", "site-packages"),
+    *glob.glob(os.path.join(WORKSPACE_ROOT, ".venv", "lib", "python*", "site-packages")),
+]
+for _site in _venv_site_candidates:
+    if os.path.exists(_site) and _site not in sys.path:
+        sys.path.insert(0, _site)
 
 try:
     from ultralytics import YOLO
@@ -58,8 +67,11 @@ CLASS_DISPLAY_NAMES = {
 }
 
 
-def get_class_color(class_id: int):
-    return CLASS_PALETTE.get(class_id, (200, 200, 200))
+def is_display_available() -> bool:
+    """Checks if a graphical display environment is available."""
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def run_offline_standalone(
@@ -76,6 +88,10 @@ def run_offline_standalone(
     print("   BHARATIYA ANTARIKSH STATION (BAS) - OFFLINE STANDALONE MODEL RUNNER")
     print("   ISRO SIH Problem Statement #26174 | Deliverable: Trained Offline AI Model")
     print("=" * 78)
+
+    if not headless and not is_display_available():
+        print("[Runner] Notice: No graphical display detected (headless environment). Running in headless mode.")
+        headless = True
 
     # 1. Verify Model Checkpoint
     if not os.path.isabs(model_path):
@@ -356,7 +372,7 @@ def run_offline_standalone(
         cap.release()
         if writer:
             writer.release()
-        if not headless:
+        if not headless and is_display_available():
             cv2.destroyAllWindows()
 
     total_wall_time = time.time() - t_start_all
@@ -401,7 +417,7 @@ if __name__ == "__main__":
         conf_threshold=args.conf,
         iou_threshold=args.iou,
         max_frames=args.frames,
-        headless=args.headless,
+        headless=args.headless or not is_display_available(),
         save_output=args.record,
         device=args.device
     )

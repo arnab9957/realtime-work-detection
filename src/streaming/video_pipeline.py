@@ -231,7 +231,9 @@ class StreamHandler(BaseHTTPRequestHandler):
             params = urllib.parse.parse_qs(query)
             exp = params.get('set', [None])[0] or params.get('exp', [None])[0]
             if exp:
-                if 'dual' in exp or 'isro' in exp or '26174' in exp or 'red' in exp:
+                if 'bottle' in exp:
+                    self.server.experiment_switch_requested = "configs/water_bottle_fsm.json"
+                elif 'dual' in exp or 'isro' in exp or '26174' in exp or 'red' in exp:
                     self.server.experiment_switch_requested = "configs/experiment_fsm.json"
                 else:
                     self.server.experiment_switch_requested = "configs/box_return_fsm.json"

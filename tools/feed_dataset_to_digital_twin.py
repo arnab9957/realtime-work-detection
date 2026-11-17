@@ -53,6 +53,13 @@ def load_dataset_records(dataset_path: str):
         raise ValueError(f"Unsupported dataset format: {dataset_path} (use .json or .csv)")
 
 
+def is_display_available() -> bool:
+    """Checks if a graphical display environment is available."""
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def play_dataset_in_digital_twin(
     dataset_path: str = "dataset/har_dataset/har_dataset_3d_joints.json",
     playback_fps: float = 24.0,
@@ -71,6 +78,10 @@ def play_dataset_in_digital_twin(
     if save_video_path:
         print(f"   Export Video   : {save_video_path}")
     print("=" * 75)
+
+    if show_window and not is_display_available():
+        print("[Feeder] Notice: No graphical display detected (headless environment). Running in headless mode.")
+        show_window = False
 
     records, fmt = load_dataset_records(dataset_path)
     total_records = len(records)
@@ -156,7 +167,7 @@ def play_dataset_in_digital_twin(
         if video_writer:
             video_writer.release()
             print(f"[Feeder] Exported Digital Twin playback video: {save_video_path}")
-        if show_window:
+        if show_window and is_display_available():
             cv2.destroyAllWindows()
 
     print("[Feeder] Digital Twin dataset playback finished cleanly.")
@@ -175,12 +186,18 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=480, help="Canvas height")
     args = parser.parse_args()
 
-    # Fallback to CSV if JSON does not exist
+    # Fallback to telemetry CSV if default JSON does not exist
     dataset_target = args.dataset
     if not os.path.exists(dataset_target):
-        csv_fallback = "dataset/har_dataset/har_dataset_telemetry.csv"
-        if os.path.exists(csv_fallback):
-            dataset_target = csv_fallback
+        for candidate in [
+            "dataset/har_dataset/har_dataset_3d_joints.json",
+            "dataset/har_dataset/har_dataset_telemetry.csv",
+            "experiments/latest_telemetry.csv",
+            "realtime_feed/current_feed_telemetry.csv",
+        ]:
+            if os.path.exists(candidate):
+                dataset_target = candidate
+                break
 
     play_dataset_in_digital_twin(
         dataset_path=dataset_target,
@@ -188,7 +205,7 @@ if __name__ == "__main__":
         loop=args.loop,
         max_frames=args.max_frames,
         save_video_path=args.save_video,
-        show_window=not args.no_window,
+        show_window=not args.no_window and is_display_available(),
         canvas_width=args.width,
         canvas_height=args.height
     )

@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import cv2
 import time
+import pytest
 from src.agents.perception_agent import PerceptionAgent
 from src.agents.imu_agent import IMUAgent
 from src.agents.fusion_agent import FusionAgent
@@ -16,6 +17,10 @@ from src.core.shared_memory import DigitalTwinBlackboard
 from src.core.types import FSMStep, AnomalyType
 
 
+@pytest.mark.skipif(
+    not os.path.exists("red_yellow.mp4"),
+    reason="requires red_yellow.mp4 (gitignored media); c1.mp4 is a different procedure",
+)
 def test_loop_restart_and_voice():
     p = PerceptionAgent()
     imu = IMUAgent()
@@ -38,7 +43,7 @@ def test_loop_restart_and_voice():
         vlm.reset()
         bb.reset()
 
-    video_path = "red_yellow.mp4" if os.path.exists("red_yellow.mp4") else "c1.mp4"
+    video_path = "red_yellow.mp4"
     cap = cv2.VideoCapture(video_path)
     print("=== SIMULATING CYCLE 1 (180 frames) ===")
     c1_transitions = []

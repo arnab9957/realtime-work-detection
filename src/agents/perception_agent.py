@@ -9,7 +9,7 @@ import math
 import json
 import numpy as np
 import cv2
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union, Any
 from src.core.types import (
     BBox2D,
     ExperimentObject,
@@ -30,8 +30,21 @@ class PerceptionAgent:
         common_model_path: Optional[str] = "yolov8n.pt",
         pose_model_path: Optional[str] = "models/yolov8n-pose.pt",
         enable_common_detection: bool = True,
-        enable_pose_detection: bool = True
+        enable_pose_detection: bool = True,
+        device: Optional[Union[str, int]] = None
     ):
+        # Determine execution device: dynamically supports CUDA (e.g. CUDA 13) and CPU
+        try:
+            import torch
+            if device is None:
+                self.device = 0 if torch.cuda.is_available() else "cpu"
+            else:
+                self.device = device
+            cuda_desc = f"CUDA {getattr(torch.version, 'cuda', '')}" if torch.cuda.is_available() else "CPU"
+        except Exception:
+            self.device = "cpu"
+            cuda_desc = "CPU"
+        print(f"[Perception Agent] Compute backend engaged: {self.device} ({cuda_desc})")
         # Load camera intrinsics
         with open(calib_path, "r") as f:
             calib_data = json.load(f)
@@ -57,12 +70,14 @@ class PerceptionAgent:
 
         # 1. Offline YOLOv8 Deep Neural Object Detector for Experiment Protocol
         self.model = None
+        self.is_bottle_model = False
         if model_path and os.path.exists(model_path):
             try:
                 import importlib
                 ultralytics_pkg = importlib.import_module("ultralytics")
                 YOLO = getattr(ultralytics_pkg, "YOLO")
                 self.model = YOLO(model_path)
+                self.is_bottle_model = "bottle" in self.model.names.values()
                 print(f"[Perception Agent] Offline YOLOv8 detector engaged: {model_path}")
             except Exception as e:
                 print(f"[Perception Agent] Offline model note: {e}. Active with contour heuristics.")
@@ -115,17 +130,34 @@ class PerceptionAgent:
         
         try:
             from relsgg.api import RelateAnything  # type: ignore
-            # Use CPU as hardware configuration specified no GPU
-            self.relate_anything = RelateAnything.from_pretrained("maelic/relsgg-vits16plus", device="cpu")
+            import torch
+            ra_device = "cuda" if (torch.cuda.is_available() and str(self.device).lower() != "cpu") else "cpu"
+            self.relate_anything = RelateAnything.from_pretrained("maelic/relsgg-vits16plus", device=ra_device)
             self.relate_anything.set_vocabulary([
                 "on", "on top of", "in front of", "behind", "beside", 
                 "inside", "contained in", "above", "below", "holding",
                 "standing next to", "far away from", "touching", "looking at"
             ])
-            print("[Perception Agent] RelateAnything engaged on CPU.")
+            print(f"[Perception Agent] RelateAnything engaged on {ra_device.upper()}.")
         except Exception as e:
             print(f"[Perception Agent] RelateAnything init note: {e}")
 
+
+    def load_detector(self, model_path: str) -> bool:
+        """Swaps the experiment object detector in place, keeping the other loaded models."""
+        if not os.path.exists(model_path):
+            print(f"[Perception Agent] Detector not found: {model_path}")
+            return False
+        try:
+            import importlib
+            YOLO = getattr(importlib.import_module("ultralytics"), "YOLO")
+            self.model = YOLO(model_path)
+            self.is_bottle_model = "bottle" in self.model.names.values()
+            print(f"[Perception Agent] Offline YOLOv8 detector engaged: {model_path}")
+            return True
+        except Exception as e:
+            print(f"[Perception Agent] Detector swap note: {e}")
+            return False
 
     def reset(self):
         """Resets dynamic tracking state for a new test or experiment run."""
@@ -158,7 +190,7 @@ class PerceptionAgent:
         if self.model is not None:
             try:
                 # conf=0.65 cleanly rejects background clutter while preserving real boxes (conf ~0.85-0.97)
-                results = self.model(frame, verbose=False, conf=0.65)
+                results = self.model(frame, verbose=False, conf=0.65, device=self.device)
                 if results and len(results) > 0 and getattr(results[0], "boxes", None) is not None:
                     class_names = getattr(self.model, "names", None)
                     if not class_names:
@@ -223,9 +255,9 @@ class PerceptionAgent:
                 pass
 
         # 2. Supplementary Common Object Detector (COCO-80 for secondary manipulable props only)
-        if self.common_model is not None:
+        if self.common_model is not None and not self.is_bottle_model:
             try:
-                results_common = self.common_model(frame, verbose=False, conf=0.40)
+                results_common = self.common_model(frame, verbose=False, conf=0.40, device=self.device)
                 if results_common and len(results_common) > 0 and results_common[0].boxes:
                     for box in results_common[0].boxes:
                         cls_id = int(box.cls[0].item())
@@ -283,7 +315,8 @@ class PerceptionAgent:
 
         # 5. Detection for ISRO Dual-Box benchmark objects (Red Box, Yellow Box)
         # Spatial filtering: restrict to astronaut workspace (exclude upper wall & right background)
-        if "red_box" not in objects:
+        # Skipped for the water bottle detector, where colour blobs would be misread as boxes.
+        if "red_box" not in objects and not self.is_bottle_model:
             mask_red1 = cv2.inRange(hsv, np.array([0, 120, 90]), np.array([15, 255, 255]))
             mask_red2 = cv2.inRange(hsv, np.array([160, 120, 90]), np.array([180, 255, 255]))
             mask_red = cv2.bitwise_or(mask_red1, mask_red2)
@@ -294,7 +327,7 @@ class PerceptionAgent:
                 red_cam = self._pixel_to_camera_coord(red_center[0], red_center[1], depth_m=1.15)
                 objects["red_box"] = ExperimentObject(name="red_box", class_name="red_box", bbox=red_bbox, pos_rack=red_cam)
 
-        if "yellow_box" not in objects:
+        if "yellow_box" not in objects and not self.is_bottle_model:
             mask_yellow = cv2.inRange(hsv, np.array([15, 120, 90]), np.array([40, 255, 255]))
             mask_yellow[:int(0.40 * h), :] = 0  # Exclude upper ceiling / background wall
             mask_yellow[:, int(0.62 * w):] = 0   # Exclude right wall
@@ -744,7 +777,7 @@ class PerceptionAgent:
         # 1. Real-Time Neural Pose Estimation (YOLOv8-Pose)
         if self.pose_model is not None and frame is not None and frame.size > 0:
             try:
-                res_pose = self.pose_model(frame, verbose=False, conf=0.20, imgsz=480)
+                res_pose = self.pose_model(frame, verbose=False, conf=0.20, imgsz=480, device=self.device)
                 if res_pose and len(res_pose) > 0 and len(res_pose[0].boxes) > 0 and res_pose[0].keypoints is not None:
                     boxes = res_pose[0].boxes
                     best_idx = 0
